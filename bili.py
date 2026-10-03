@@ -47,6 +47,8 @@ def _get_json(url, params, headers, timeout):
     """请求 B 站 JSON 接口；网络/HTTP/业务码异常统一抛 BiliError。"""
     try:
         r = requests.get(url, params=params, headers=headers, timeout=timeout)
+    except requests.Timeout as e:
+        raise BiliError(f"B 站接口请求超时（>{timeout}s）: {url}", "timeout")
     except requests.RequestException as e:
         raise BiliError(f"B 站接口请求失败 {url}: {e}", "fetch_failed")
     if r.status_code != 200:
@@ -105,6 +107,8 @@ def get_audio(bvid, cfg):
                 for chunk in r.iter_content(chunk_size=256 * 1024):
                     if chunk:
                         f.write(chunk)
+    except requests.Timeout as e:
+        raise BiliError(f"音频流下载超时（>{timeout}s）: {e}", "timeout")
     except requests.RequestException as e:
         raise BiliError(f"音频流下载失败: {e}", "fetch_failed")
 

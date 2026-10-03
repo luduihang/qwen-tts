@@ -123,6 +123,29 @@ def test_asr_error_502_and_temp_kept(tmp_path):
     assert temp_audio.exists()
 
 
+def test_asr_timeout_504_and_temp_kept(tmp_path):
+    cfg = make_cfg(tmp_path)
+    temp_audio = write_temp_audio(cfg)
+    with patch("app.get_audio", return_value=("T", 10, str(temp_audio))), patch(
+        "app.transcribe", side_effect=AsrError("ASR 请求超时（>1s）", "timeout")
+    ):
+        client = make_client(cfg)
+        r = post_bvid(client, BVID)
+    assert r.status_code == 504
+    assert r.get_json()["error"]["code"] == "timeout"
+    assert temp_audio.exists()
+
+
+def test_bili_timeout_504(tmp_path):
+    with patch(
+        "app.get_audio", side_effect=BiliError("B 站接口请求超时（>1s）", "timeout")
+    ):
+        client = make_client(make_cfg(tmp_path))
+        r = post_bvid(client, BVID)
+    assert r.status_code == 504
+    assert r.get_json()["error"]["code"] == "timeout"
+
+
 def test_title_illegal_chars_cleaned(tmp_path):
     cfg = make_cfg(tmp_path)
     temp_audio = write_temp_audio(cfg)

@@ -112,8 +112,9 @@ def test_non_200_raises_with_status(mock_post, tmp_path):
 @patch("asr.requests.post")
 def test_timeout_raises_asr_error(mock_post, tmp_path):
     mock_post.side_effect = rq.Timeout("read timed out")
-    with pytest.raises(AsrError, match="ASR 请求失败"):
+    with pytest.raises(AsrError, match="超时") as ei:
         transcribe(str(write_audio(tmp_path)), make_cfg())
+    assert ei.value.code == "timeout"
 
 
 @patch("asr.requests.post")

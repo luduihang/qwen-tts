@@ -158,6 +158,30 @@ def test_network_error_is_fetch_failed(mock_get, tmp_path):
 
 
 @patch("bili.requests.get")
+def test_view_timeout_is_timeout_code(mock_get, tmp_path):
+    import requests as rq
+
+    mock_get.side_effect = rq.Timeout("read timed out")
+    with pytest.raises(BiliError) as ei:
+        get_audio(VALID_BVID, make_cfg(tmp_path))
+    assert ei.value.code == "timeout"
+
+
+@patch("bili.requests.get")
+def test_download_timeout_is_timeout_code(mock_get, tmp_path):
+    import requests as rq
+
+    mock_get.side_effect = [
+        json_resp(ok_view()),
+        json_resp(ok_play()),
+        rq.Timeout("read timed out"),
+    ]
+    with pytest.raises(BiliError) as ei:
+        get_audio(VALID_BVID, make_cfg(tmp_path))
+    assert ei.value.code == "timeout"
+
+
+@patch("bili.requests.get")
 def test_playurl_without_dash_audio(mock_get, tmp_path):
     mock_get.side_effect = [json_resp(ok_view()), json_resp({"code": 0, "data": {}})]
     with pytest.raises(BiliError) as ei:

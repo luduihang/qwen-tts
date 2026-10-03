@@ -15,7 +15,11 @@ import requests
 
 
 class AsrError(Exception):
-    """ASR 调用失败。"""
+    """ASR 调用失败；code 默认 asr_failed，超时时 timeout。"""
+
+    def __init__(self, message, code="asr_failed"):
+        super().__init__(message)
+        self.code = code
 
 
 def transcribe(audio_path, cfg):
@@ -45,6 +49,8 @@ def transcribe(audio_path, cfg):
             r = requests.post(
                 a["url"], headers=headers, data=form, files=files, timeout=timeout
             )
+    except requests.Timeout as e:
+        raise AsrError(f"ASR 请求超时（>{timeout}s）: {e}", "timeout")
     except requests.RequestException as e:
         raise AsrError(f"ASR 请求失败: {e}")
 

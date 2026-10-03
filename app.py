@@ -142,7 +142,7 @@ def create_app(cfg):
         except BiliError as e:
             return _error_response(e.code, e, cfg, bvid, started)
         except AsrError as e:
-            return _error_response(e.code if hasattr(e, "code") else "asr_failed", e, cfg, bvid, started)
+            return _error_response(e.code, e, cfg, bvid, started)
         print(
             f"[transcribe] bvid={bvid} ok elapsed={time.time() - started:.1f}s file={out_path}",
             flush=True,
