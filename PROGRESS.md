@@ -4,26 +4,46 @@
 > Each entry is 2-3 sentences. Older entries get pruned/consolidated when this file exceeds ~100 entries or ~8k chars.
 
 
-<!-- session-in-progress:start=2026-10-03T08:19:48.192Z -->
-## 2026-10-03 16:48 — ## 状态汇总
 
-**✅ 规划文档全部完成并验证**（已提交 `9c7f44d`）：
-- `VISION.md` — 项目定位 + 领域词汇表（含 "Avoid... _(in progress)_
-## 状态汇总
+## 2026-10-03 20:33 — ✅ 两个文件已写入、验证、提交并 push（`e94bce1`）。
 
-**✅ 规划文档全部完成并验证**（已提交 `9c7f44d`）：
-- `VISION.md` — 项目定位 + 领域词汇表（含 "Avoided terms: 不叫 TTS"）
-- `PLAN.md` — v1 四阶段：骨架 → BV号→音频 → 音频→文本 → 健壮性验收
-- `TASKS.md` — Phase 1 四个任务（T-001~T-004），每个带 Done when
-- `PROGRESS.md` — 已记第一条（scaffold 完成）
-- `DECISIONS.md` — ADR 空模板（技术栈决策的正式条目将在实现时记录）
+**当前计划状态**：
+- `TASKS.md` — 13 个任务全预填，顶部"契约总览"...
+✅ 两个文件已写入、验证、提交并 push（`e94bce1`）。
 
-**✅ 本地 git**：已提交初始 scaffold commit。`.gitignore` 预先加上了 `config.yaml`（可能含 api_key，不入库）、`output/`、`temp/`。
+**当前计划状态**：
+- `TASKS.md` — 13 个任务全预填，顶部"契约总览"冻结接口（config schema / `bili.get_audio` / `asr.transcribe` / 错误映射 / 命名规则），每个任务带 `Owns:` + `Done when`
+- `PLAN.md` — 新增 Work packages 节：A ∥ B 分解、worktree 规则、merge 顺序、验收门
 
-**⛔ GitHub 仓库：卡住** —— `gh` 已装好（brew，v2.102.0）但未认证，git 凭据里也没有 GitHub token。需要你做一步（二选一）：
+**执行路径**：
 
-1. 在你的终端跑 `gh aut...
-<!-- end-session-in-progress -->
+| 步骤 | 内容 | 方式 |
+|---|---|---|
+| 1 | Phase 1（T-001~T-004） | 串行，main，~30 分钟 |
+| 2 | 工作包 A（T-005/006）∥ 工作包 B（T-007/008） | 两个并行 session，各占一个 worktree |
+| 3 | 整合（T-009/010 管线） | 串行，merge A→B→main 后 |
+| 4 | 健壮性+验收（T-011~013） | 串行，需你的 vLLM 在线 |...
+## 2026-10-03 17:02 — ## ✅ Scaffold 完成
+
+**文件**（全部写入 + 读回验证）：
+| 文件 | 内容 |
+|---|---|
+| `VISION.md` | 项目定...
+## ✅ Scaffold 完成
+
+**文件**（全部写入 + 读回验证）：
+| 文件 | 内容 |
+|---|---|
+| `VISION.md` | 项目定位、v1 方案、领域词汇表（含 TTS/ASR 误称纠正） |
+| `PLAN.md` | v1 四阶段：骨架配置 → BV号→音频 → 音频→文本 → 健壮性验收 |
+| `TASKS.md` | Phase 1 任务 T-001~T-004，均带 Done when |
+| `PROGRESS.md` | 首条 session 记录已写入 |
+| `DECISIONS.md` | ADR 空模板（实现时记录技术栈决策） |
+
+**GitHub**：https://github.com/luduihang/qwen-tts （public，2 个 commit 已 push）
+**Live URL**：不适用 —— 本服务依赖本地 vLLM ASR，部署形态是本地进程（`python app.py`），跳过 Vercel（scaffold 流程的有意偏离，已在 VISION 记录）。
+
+**推荐下一步**：`/skill...
 ## Format
 
 ```
