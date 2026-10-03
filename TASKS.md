@@ -30,19 +30,19 @@
 
 ### Phase 1 — 骨架与配置（串行，main）
 
-- [ ] T-001 — 初始化依赖与 gitignore
+- [x] T-001 — 初始化依赖与 gitignore
   - **Owns:** `requirements.txt`, `.gitignore`
   - 新建 `requirements.txt`（flask、requests、pyyaml）；gitignore 已含 `config.yaml`/`output/`/`temp/`，核对补齐
   - **Done when:** `pip install -r requirements.txt` 成功，`python -c "import flask, requests, yaml"` 无错
-- [ ] T-002 — 配置文件与加载逻辑
+- [x] T-002 — 配置文件与加载逻辑
   - **Owns:** `config.example.yaml`, `app.py`（配置加载部分）
   - 按契约总览建 `config.example.yaml`；`app.py` 实现加载：`config.yaml` 缺失或必填项（asr.provider/url、output_dir、temp_dir）缺失时报清晰错误并退出
   - **Done when:** 以 example 为 `config.yaml` 可正常加载；删掉 `config.yaml` 启动报明确的"配置文件缺失"
-- [ ] T-003 — Flask 入口与 /health
+- [x] T-003 — Flask 入口与 /health
   - **Owns:** `app.py`
   - 启动时自动创建 `output_dir`/`temp_dir`；`GET /health` 返回 200 JSON（含 `asr.provider`）
   - **Done when:** `python app.py` 启动后 `curl localhost:5000/health` 返回 200 且含 `asr.provider`
-- [ ] T-004 — Phase 1 单测
+- [x] T-004 — Phase 1 单测
   - **Owns:** `tests/test_config.py`, `tests/test_app.py`
   - 覆盖：配置加载（正常/缺文件/缺必填项）、目录自动创建、/health 响应
   - **Done when:** `pytest tests/ -q` 全绿
@@ -101,7 +101,10 @@
 
 ## Done
 
-（无）
+- T-001 — 初始化依赖与 gitignore（commit `3321c1c`）
+- T-002 — 配置文件与加载逻辑（commit `3118170`）
+- T-003 — Flask 入口与 /health（commit `317d77d`）
+- T-004 — Phase 1 单测，13 条全绿（commit `60fb67e` + `d2506a0`）
 
 ## Blocked
 

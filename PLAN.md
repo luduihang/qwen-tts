@@ -78,7 +78,7 @@ Phase 4（串行）: T-011 健壮性, T-012 README, T-013 端到端验收
 
 ## Current step
 
-Phase 1 未开始 —— 从 T-001 起；Phase 1 验收后工作包 A ∥ B 可并行启动
+Phase 1 已完成（T-001~T-004，main）—— 并行启动：worktree A（task/T-005-bili）∥ B（task/T-007-asr）
 
 ## Notes
 
