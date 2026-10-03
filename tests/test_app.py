@@ -21,8 +21,9 @@ def make_cfg(tmp_path):
 
 
 def test_health_200_with_provider(tmp_path):
-    client = create_app(make_cfg(tmp_path)).test_client()
-    r = client.get("/health")
+    # 注意：Flask 2.2 的 JSON provider 弱引用 app，测试需持有 app 引用
+    app = create_app(make_cfg(tmp_path))
+    r = app.test_client().get("/health")
     assert r.status_code == 200
     body = r.get_json()
     assert body["status"] == "ok"
@@ -32,7 +33,8 @@ def test_health_200_with_provider(tmp_path):
 def test_health_reflects_config_provider(tmp_path):
     cfg = make_cfg(tmp_path)
     cfg["asr"]["provider"] = "remote"
-    r = create_app(cfg).test_client().get("/health")
+    app = create_app(cfg)
+    r = app.test_client().get("/health")
     assert r.get_json()["asr"]["provider"] == "remote"
 
 
