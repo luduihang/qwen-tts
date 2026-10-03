@@ -44,20 +44,29 @@ def ok_resp(payload=None):
 @patch("asr.requests.post")
 def test_local_request_shape(mock_post, tmp_path):
     audio = write_audio(tmp_path)
-    mock_post.return_value = ok_resp()
+    captured = {}
 
+    def fake_post(url, **kw):
+        captured["url"] = url
+        captured["headers"] = kw.get("headers", {})
+        captured["data"] = kw.get("data", {})
+        captured["timeout"] = kw.get("timeout")
+        name, fh = kw["files"]["file"]
+        captured["name"] = name
+        captured["content"] = fh.read()  # 真实 requests 在 post() 内读取，此时文件未关
+        return ok_resp()
+
+    mock_post.side_effect = fake_post
     text = transcribe(str(audio), make_cfg(provider="local", model="qwen-asr"))
 
     assert text == "你好，世界。"
-    (url,), kw = mock_post.call_args
-    assert url == "http://127.0.0.1:8000/v1/audio/transcriptions"
-    assert "Authorization" not in kw["headers"]
-    assert kw["data"]["language"] == "zh"
-    assert kw["data"]["model"] == "qwen-asr"
-    assert kw["timeout"] == 7
-    name, fh = kw["files"]["file"]
-    assert name == "BV1GJ411x7h7.m4a"
-    assert fh.read() == AUDIO_CONTENT
+    assert captured["url"] == "http://127.0.0.1:8000/v1/audio/transcriptions"
+    assert "Authorization" not in captured["headers"]
+    assert captured["data"]["language"] == "zh"
+    assert captured["data"]["model"] == "qwen-asr"
+    assert captured["timeout"] == 7
+    assert captured["name"] == "BV1GJ411x7h7.m4a"
+    assert captured["content"] == AUDIO_CONTENT
 
 
 @patch("asr.requests.post")
