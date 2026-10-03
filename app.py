@@ -1,13 +1,19 @@
 """qwen-tts — BV 号 → 中文转写 API 入口。
 
-配置加载（config.yaml）与 Flask app 工厂。/transcribe 管线在 Phase 3 接线。
+配置加载（config.yaml）、Flask app 工厂与 /transcribe 同步管线：
+    POST /transcribe {"bvid": ...} → bili 拉音频 → asr 转写 → 保存 .txt + 清理临时音频
 """
 import os
+import re
 import sys
+import time
 from pathlib import Path
 
 import yaml
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
+
+from asr import AsrError, transcribe
+from bili import BV_RE, BiliError, get_audio
 
 CONFIG_PATH = Path(__file__).resolve().parent / "config.yaml"
 
@@ -74,6 +80,44 @@ def ensure_dirs(cfg):
         Path(cfg[key]).expanduser().mkdir(parents=True, exist_ok=True)
 
 
+# 错误码 → HTTP 状态映射（契约见 TASKS.md）
+ERROR_STATUS = {
+    "invalid_bvid": 400,
+    "not_found": 404,
+    "fetch_failed": 502,
+    "asr_failed": 502,
+    "timeout": 504,
+}
+
+_INVALID_FILENAME_CHARS = re.compile(r'[\\/:*?"<>|]')
+
+
+def clean_title(title):
+    """标题清洗：去除 \\/:*?"<>| ，空白压缩，截断 40 字符（契约规则）。"""
+    t = _INVALID_FILENAME_CHARS.sub("", title or "")
+    t = re.sub(r"\s+", " ", t).strip()
+    return t[:40]
+
+
+def transcription_file_name(bvid, title):
+    """转写文件名：{bvid}_{标题清洗}.txt"""
+    return f"{bvid}_{clean_title(title)}.txt"
+
+
+def _error_response(code, exc, cfg, bvid, started):
+    """按契约返回错误 JSON；失败时保留临时音频并在 message 中给出路径。"""
+    message = str(exc)
+    if isinstance(bvid, str) and BV_RE.match(bvid):
+        temp = Path(cfg["temp_dir"]) / f"{bvid}.m4a"
+        if temp.exists():
+            message += f"（临时音频已保留: {temp}）"
+    print(
+        f"[transcribe] bvid={bvid} error={code} elapsed={time.time() - started:.1f}s msg={message}",
+        flush=True,
+    )
+    return jsonify(error={"code": code, "message": message}), ERROR_STATUS.get(code, 502)
+
+
 def create_app(cfg):
     """Flask app 工厂；cfg 来自 load_config。"""
     app = Flask(__name__)
@@ -81,6 +125,31 @@ def create_app(cfg):
     @app.get("/health")
     def health():
         return jsonify(status="ok", asr={"provider": cfg["asr"]["provider"]})
+
+    @app.post("/transcribe")
+    def transcribe_route():
+        body = request.get_json(silent=True) or {}
+        bvid = body.get("bvid") or ""
+        started = time.time()
+        print(f"[transcribe] start bvid={bvid}", flush=True)
+        try:
+            title, duration_s, audio_path = get_audio(bvid, cfg)
+            text = transcribe(audio_path, cfg)
+            out_path = Path(cfg["output_dir"]) / transcription_file_name(bvid, title)
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(text, encoding="utf-8")
+            os.remove(audio_path)  # 成功后清理临时音频
+        except BiliError as e:
+            return _error_response(e.code, e, cfg, bvid, started)
+        except AsrError as e:
+            return _error_response(e.code if hasattr(e, "code") else "asr_failed", e, cfg, bvid, started)
+        print(
+            f"[transcribe] bvid={bvid} ok elapsed={time.time() - started:.1f}s file={out_path}",
+            flush=True,
+        )
+        return jsonify(
+            bvid=bvid, title=title, text=text, file_path=str(out_path), duration_s=duration_s
+        )
 
     return app
 
