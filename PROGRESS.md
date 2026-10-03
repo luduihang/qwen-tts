@@ -5,31 +5,24 @@
 
 
 <!-- session-in-progress:start=2026-10-03T08:19:48.192Z -->
-## 2026-10-03 16:44 — ## Done
+## 2026-10-03 16:48 — ## 状态汇总
 
-（无）
+**✅ 规划文档全部完成并验证**（已提交 `9c7f44d`）：
+- `VISION.md` — 项目定位 + 领域词汇表（含 "Avoid... _(in progress)_
+## 状态汇总
 
-## Blocked
+**✅ 规划文档全部完成并验证**（已提交 `9c7f44d`）：
+- `VISION.md` — 项目定位 + 领域词汇表（含 "Avoided terms: 不叫 TTS"）
+- `PLAN.md` — v1 四阶段：骨架 → BV号→音频 → 音频→文本 → 健壮性验收
+- `TASKS.md` — Phase 1 四个任务（T-001~T-004），每个带 Done when
+- `PROGRESS.md` — 已记第一条（scaffold 完成）
+- `DECISIONS.md` — ADR 空模板（技术栈决策的正式条目将在实现时记录）
 
-（无）
+**✅ 本地 git**：已提交初始 scaffold commit。`.gitignore` 预先加上了 `config.yaml`（可能含 api_key，不入库）、`output/`、`temp/`。
 
-## Format conventions
+**⛔ GitHub 仓库：卡住** —— `gh` 已装好（brew，v2.102.0）但未认证，git 凭据里也没有 GitHub token。需要你做一步（二选一）：
 
-- Task IDs increment monot... _(in progress)_
-## Done
-
-（无）
-
-## Blocked
-
-（无）
-
-## Format conventions
-
-- Task IDs increment monotonically across the project's lifetime — never reuse an ID, even for deleted tasks.
-- A task is "active" if it's queued and ready; "in progress" if a session is currently working on it; "done" if its acceptance criteria are met; "blocked" if it can't proceed without resolving a dependency.
-- Move tasks between sections as state changes. Don't delete completed tasks — they're a record.
-- For larger tasks (>1 sessio...
+1. 在你的终端跑 `gh aut...
 <!-- end-session-in-progress -->
 ## Format
 
@@ -42,5 +35,5 @@
 
 <!-- newest first -->
 
-## 2026-10-03 16:41 — scaffold：规划文档齐备，待建 GitHub 仓库
-Scaffold 流程完成：VISION/PLAN/TASKS 经用户批准并写入（均读回验证），PROGRESS/DECISIONS 模板就位。关键确认：本地 ASR 为 vLLM 部署、OpenAI 兼容接口；部署形态为本地进程，不上 Vercel。下一步：确认仓库名/可见性后建 GitHub 仓库，然后从 T-001 开始 Phase 1 实现。
+## 2026-10-03 16:41 — scaffold：规划文档齐备，GitHub 仓库已建
+Scaffold 流程完成：VISION/PLAN/TASKS 经用户批准并写入（均读回验证），PROGRESS/DECISIONS 模板就位。关键确认：本地 ASR 为 vLLM 部署、OpenAI 兼容接口；部署形态为本地进程，不上 Vercel。GitHub 仓库 https://github.com/luduihang/qwen-tts （public）已创建并 push 初始 commit。下一步：T-001 开始 Phase 1 实现。
