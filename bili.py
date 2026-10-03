@@ -94,6 +94,7 @@ def get_audio(bvid, cfg):
         raise BiliError("playurl 音频流缺少 baseUrl", "fetch_failed")
 
     out_path = Path(cfg["temp_dir"]) / f"{bvid}.m4a"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     try:
         with requests.get(
             audio_url, headers=headers, stream=True, timeout=timeout
