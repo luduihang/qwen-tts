@@ -66,3 +66,37 @@ def load_config(path=None):
     if cfg["asr"]["provider"] == "remote" and not cfg["asr"]["api_key"]:
         raise ConfigError("asr.provider 为 remote 时 asr.api_key 必填")
     return cfg
+
+
+def ensure_dirs(cfg):
+    """启动时自动创建 output_dir / temp_dir。"""
+    for key in ("output_dir", "temp_dir"):
+        Path(cfg[key]).expanduser().mkdir(parents=True, exist_ok=True)
+
+
+def create_app(cfg):
+    """Flask app 工厂；cfg 来自 load_config。"""
+    app = Flask(__name__)
+
+    @app.get("/health")
+    def health():
+        return jsonify(status="ok", asr={"provider": cfg["asr"]["provider"]})
+
+    return app
+
+
+def main():
+    try:
+        cfg = load_config()
+    except ConfigError as e:
+        print(f"[config] {e}", file=sys.stderr)
+        sys.exit(1)
+    ensure_dirs(cfg)
+    app = create_app(cfg)
+    port = int(os.environ.get("PORT", "5000"))
+    app.run(host="127.0.0.1", port=port, debug=False)
+
+
+if __name__ == "__main__":
+    main()
+
