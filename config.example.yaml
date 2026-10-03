@@ -1,0 +1,15 @@
+# qwen-tts 配置样例 —— 复制为 config.yaml 后按需修改（config.yaml 已 gitignore，可含敏感信息）
+
+asr:
+  provider: local                      # local | remote
+  url: http://127.0.0.1:8000/v1/audio/transcriptions  # 完整端点 URL
+  api_key: ""                          # remote 必填，local 可空
+  model: ""                            # 可选，透传给端点
+  language: zh
+output_dir: ./output
+temp_dir: ./temp
+bilibili:
+  cookie: ""                           # 可选
+timeout:
+  download_s: 300
+  asr_s: 600
