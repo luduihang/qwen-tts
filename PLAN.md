@@ -52,12 +52,12 @@ Phase 4（串行）: T-011 健壮性, T-012 README, T-013 端到端验收
 
 ## Acceptance criteria
 
-- [ ] `python app.py` 启动服务，`curl localhost:5000/health` 返回 200
-- [ ] `curl -X POST localhost:5000/transcribe -H 'Content-Type: application/json' -d '{"bvid":"<真实BV号>"}'` 返回 200，JSON 含非空中文 text 与 file_path
-- [ ] 转写 .txt 出现在配置的输出目录，文件名含 BV 号
-- [ ] 成功转写后临时音频目录为空（自动清理生效）
-- [ ] `config.yaml` 中 `asr.provider: local` 改为 `remote` 后无需改代码即可切换
-- [ ] 错误场景（非法 BV 号 / 拉流失败 / ASR 不可达）返回 4xx/5xx JSON，不是 500 HTML
+- [x] `python app.py` 启动服务，`curl localhost:5000/health` 返回 200
+- [ ] `curl -X POST localhost:5000/transcribe -H 'Content-Type: application/json' -d '{"bvid":"<真实BV号>"}'` 返回 200，JSON 含非空中文 text 与 file_path（stub ASR 已验证链路 200 + 中文 text + file_path；真实模型待 vLLM 在线，归 T-013）
+- [x] 转写 .txt 出现在配置的输出目录，文件名含 BV 号
+- [x] 成功转写后临时音频目录为空（自动清理生效）
+- [x] `config.yaml` 中 `asr.provider: local` 改为 `remote` 后无需改代码即可切换（e2e 验证 Bearer 送达）
+- [x] 错误场景（非法 BV 号 / 拉流失败 / ASR 不可达）返回 4xx/5xx JSON，不是 500 HTML（400/404/502/504 单测 + 504 手动实测）
 
 ## Not in scope
 
@@ -78,7 +78,7 @@ Phase 4（串行）: T-011 健壮性, T-012 README, T-013 端到端验收
 
 ## Current step
 
-Phase 1 已完成（T-001~T-004，main）—— 并行启动：worktree A（task/T-005-bili）∥ B（task/T-007-asr）
+v1 代码全部完成并合并到 main（T-001~T-012，52 条测试全绿）—— 仅剩 T-013 端到端验收（blocked：需本地 vLLM 在线，见 TASKS Blocked 节）
 
 ## Notes
 

@@ -21,9 +21,9 @@
     download_s: 300
     asr_s: 600
   ```
-- `bili.get_audio(bvid, cfg) -> (title, duration_s, local_path)`，失败抛 `BiliError(message, code)`，code ∈ {`invalid_bvid`, `not_found`, `fetch_failed`}
-- `asr.transcribe(audio_path, cfg) -> str`（中文文本），失败抛 `AsrError(message)`
-- 错误 JSON：`{"error": {"code", "message"}}`；映射：`invalid_bvid`→400，`not_found`→404，`fetch_failed`/`AsrError`→502
+- `bili.get_audio(bvid, cfg) -> (title, duration_s, local_path)`，失败抛 `BiliError(message, code)`，code ∈ {`invalid_bvid`, `not_found`, `fetch_failed`, `timeout`}
+- `asr.transcribe(audio_path, cfg) -> str`（中文文本），失败抛 `AsrError(message)`，可选属性 `code`（默认 `asr_failed`，超时时 `timeout`）
+- 错误 JSON：`{"error": {"code", "message"}}`；映射：`invalid_bvid`→400，`not_found`→404，`fetch_failed`/`asr_failed`→502，`timeout`→504
 - 转写文件名：`{bvid}_{标题清洗}.txt`（清洗：去除 `\/:*?"<>|`，空白压缩，截断 40 字符）
 
 ## Active
@@ -49,44 +49,44 @@
 
 ### Phase 2 — BV 号 → 音频落盘（工作包 A，可与 B 并行）
 
-- [ ] T-005 — bili.py 客户端
+- [x] T-005 — bili.py 客户端
   - **Owns:** `bili.py`
   - **Contract:** 见契约总览
   - 实现：BV 格式校验（`^BV[1-9A-Za-z]{10}$`）→ `x/web-interface/view` 取 cid/标题/时长 → `x/player/playurl?fnval=16` 取 DASH 音频（dash.audio 首项）→ 流式下载到 `temp_dir/{bvid}.m4a`（带 User-Agent + Referer: www.bilibili.com；cookie 非空则带上）
   - **Done when:** `pytest tests/test_bili.py -q` 全绿（mock HTTP）；另手动真实拉取一个 BV 成功（网络允许时，结果记 PROGRESS）
-- [ ] T-006 — bili.py 测试
+- [x] T-006 — bili.py 测试
   - **Owns:** `tests/test_bili.py`
   - 覆盖：BV 校验（合法/非法）、view→playurl→下载正常流（mock）、not_found、fetch_failed、cookie 可选头
   - **Done when:** `pytest tests/test_bili.py -q` 全绿
 
 ### Phase 3 — 音频 → 文本（工作包 B 与 A 并行；管线接线串行）
 
-- [ ] T-007 — asr.py 客户端
+- [x] T-007 — asr.py 客户端
   - **Owns:** `asr.py`
   - **Contract:** 见契约总览
   - 实现：按 `cfg["asr"]["provider"]` 分支，两者同形：multipart POST 到 `cfg["asr"]["url"]`（file=音频、model、language=zh）；remote 额外带 `Authorization: Bearer api_key`；超时取 `cfg["timeout"]["asr_s"]`
   - **Done when:** `pytest tests/test_asr.py -q` 全绿（mock local/remote 两分支）
-- [ ] T-008 — asr.py 测试
+- [x] T-008 — asr.py 测试
   - **Owns:** `tests/test_asr.py`
   - 覆盖：local 分支请求形状、remote 分支 Bearer 头、非 200 → AsrError、超时 → AsrError、响应文本解析
   - **Done when:** `pytest tests/test_asr.py -q` 全绿
-- [ ] T-009 — /transcribe 管线（整合步骤）
+- [x] T-009 — /transcribe 管线（整合步骤）
   - **Owns:** `app.py`
   - **Contract:** 见契约总览（响应 `{bvid,title,text,file_path,duration_s}`）
   - 实现：串起 `bili.get_audio` → `asr.transcribe` → 保存 `.txt`（命名规则见契约）→ 成功后删临时音频；失败保留临时文件并在错误信息中给出路径；按映射表返回错误 JSON
   - **Done when:** `pytest tests/test_pipeline.py -q` 全绿
-- [ ] T-010 — 管线测试
+- [x] T-010 — 管线测试
   - **Owns:** `tests/test_pipeline.py`
   - 覆盖：happy path（200 + 字段齐全 + .txt 落盘 + 临时文件已删）、invalid_bvid→400、not_found→404、fetch_failed→502 且临时文件保留、AsrError→502、标题非法字符清洗
   - **Done when:** `pytest tests/test_pipeline.py -q` 全绿
 
 ### Phase 4 — 健壮性与验收（串行）
 
-- [ ] T-011 — 超时、日志与边界
+- [x] T-011 — 超时、日志与边界
   - **Owns:** `app.py`, `bili.py`, `asr.py`
   - 统一超时生效（下载/ASR 各取配置）、stdout 日志（每请求：bvid、结果、耗时）、超时返回 504 JSON 而非挂死
   - **Done when:** `pytest tests/ -q` 全绿；手动调小 timeout 触发超时，返回清晰 504 JSON
-- [ ] T-012 — README
+- [x] T-012 — README
   - **Owns:** `README.md`
   - 简介、快速开始（装依赖/配 config/启动）、curl 示例（成功+错误）、配置项表、本地 vLLM 前置条件、故障排查
   - **Done when:** 按 README 从零走一遍能启动服务（自查记录进 PROGRESS）
@@ -105,10 +105,18 @@
 - T-002 — 配置文件与加载逻辑（commit `3118170`）
 - T-003 — Flask 入口与 /health（commit `317d77d`）
 - T-004 — Phase 1 单测，13 条全绿（commit `60fb67e` + `d2506a0`）
+- T-005 — bili.py 客户端（workA，真实拉取 2 个 BV 成功；commit `9ba3e92` + `74e28d8`）
+- T-006 — bili.py 测试（workA，mock 全绿；commit `a3316e8`）
+- T-007 — asr.py 客户端（workB；commit `fc1ca51`）
+- T-008 — asr.py 测试（workB，mock 全绿；commit `5327dce`）
+- T-009 — /transcribe 管线（main 整合；commit `2987abb`）
+- T-010 — 管线测试，52 条全绿（commit `2932790` + 后续补充）
+- T-011 — 超时→504 JSON + 每请求日志（手动黑洞 IP 实测 3.5s 返回 504；commit `e7770f1`）
+- T-012 — README（commit `c6f5964`）
 
 ## Blocked
 
-（无）
+- T-013 — 端到端验收：需本地 vLLM（Qwen 语音模型）在线。当前 127.0.0.1:8000 无服务（connection refused），HF 缓存无 ASR 模型（仅 sherpa-onnx paraformer，非 vLLM 模型）。已用 stub ASR 验证全链路（真实 B 站下载→转写→落盘→清理→remote 切换 Bearer），剩真实模型转写一项。待用户提供 vLLM 地址/启动命令。
 
 ## Format conventions
 
