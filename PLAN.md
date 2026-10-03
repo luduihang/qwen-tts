@@ -15,6 +15,27 @@
 3. **音频 → 文本（核心链路）** — asr.py：local provider 调 vLLM OpenAI 兼容 `/v1/audio/transcriptions`，remote provider 调远程 Qwen ASR；`POST /transcribe` 串起全链路，返回 JSON 并保存转写文件，成功后清理临时音频。产出：v1 核心目标达成。
 4. **健壮性与验收** — 错误处理（BV 不存在 / 拉流失败 / ASR 失败返回 JSON 错误而非 500 HTML）、超时与日志、README（curl 示例 + 配置说明）、端到端验收跑一遍。产出：可交付的 v1。
 
+## Work packages（并行）
+
+v1 任务图支持并行执行（详见 TASKS.md 的 Owns/Contract 字段）：
+
+```
+Phase 1（串行，地基）: T-001 → T-004                 [main]
+      │
+      ├── 工作包 A: T-005 bili.py + T-006 其测试      [独立分支]
+      └── 工作包 B: T-007 asr.py + T-008 其测试       [独立分支]   ← A ∥ B
+      │
+Phase 3b（串行整合）: T-009 管线 + T-010 管线测试
+Phase 4（串行）: T-011 健壮性, T-012 README, T-013 端到端验收
+```
+
+规则：
+- A/B 用 `git worktree` 各占一个分支，物理隔离；merge 顺序 A → B → main
+- 并行窗口内零共享文件（由 `Owns:` 保证）
+- 接口契约冻结在 TASKS.md“契约总览”，改动须先改契约
+- 整合验收门：`pytest tests/ -q` 全绿 + curl 验收（见 Acceptance criteria）
+- 每任务一个 commit，格式 `T-00N: <摘要>`
+
 ## Files that will change
 
 | File | Change | Phase |
@@ -57,8 +78,9 @@
 
 ## Current step
 
-not started（等待 PLAN/TASKS 批准）
+Phase 1 未开始 —— 从 T-001 起；Phase 1 验收后工作包 A ∥ B 可并行启动
 
 ## Notes
 
 - 2026-10-03 规划：ASR 本地服务确认为 vLLM 部署、OpenAI 兼容接口
+- 2026-10-03 计划调整：TASKS 全 phase 预填 + 接口契约冻结 + 文件所有权（Owns），支持 A∥B 并行（git worktree，merge 顺序 A→B→main）
