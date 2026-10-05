@@ -243,3 +243,148 @@ def test_missing_text_field_raises(mock_post, tmp_path):
     mock_post.return_value = ok_resp({"detail": "unsupported format"})
     with pytest.raises(AsrError, match="text 字段"):
         transcribe(str(write_audio(tmp_path)), make_cfg())
+
+
+# ---------- T-016 长音频切段 ----------
+
+
+def make_cfg_chunk(provider="local", chunk_seconds=None, **kw):
+    cfg = make_cfg(provider=provider, **kw)
+    if chunk_seconds is not None:
+        cfg["asr"]["chunk_seconds"] = chunk_seconds
+    return cfg
+
+
+def capture_posts(responses):
+    """返回 (mock_post, calls)：记录每次 post 的文件名；responses 可为单个或按序列表。"""
+    calls = []
+
+    def fake_post(url, **kw):
+        calls.append({"url": url, "headers": kw.get("headers", {}),
+                      "data": kw.get("data", {}), "name": kw["files"]["file"][0]})
+        resp = responses[len(calls) - 1] if isinstance(responses, list) else responses
+        if isinstance(resp, Exception):
+            raise resp
+        return resp
+
+    return MagicMock(side_effect=fake_post), calls
+
+
+@patch("asr.requests.post")
+def test_long_wav_chunked_and_concatenated(mock_post, tmp_path):
+    """超长 wav：ffmpeg 切段 → 逐段发送 → 按序拼接 → 段文件清理。"""
+    texts = ["第一段。", "第二段。", "第三段。"]
+    mock, calls = capture_posts([ok_resp({"text": t}) for t in texts])
+    mock_post.side_effect = mock.side_effect
+
+    audio = write_audio(tmp_path, content=real_wav_bytes(seconds=5))  # 5s 16k 单声道
+    result = transcribe(str(audio), make_cfg_chunk(chunk_seconds=2))
+
+    assert result == "第一段。第二段。第三段。"
+    assert [c["name"] for c in calls] == [
+        "BV1GJ411x7h7.chunk_000.wav",
+        "BV1GJ411x7h7.chunk_001.wav",
+        "BV1GJ411x7h7.chunk_002.wav",
+    ]
+    # 段文件已清理，且 wav 输入未触发转码临时文件
+    assert not list(tmp_path.glob("*.chunk_*.wav"))
+    assert not (tmp_path / "BV1GJ411x7h7.asr.wav").exists()
+
+
+@patch("asr.requests.post")
+def test_short_wav_single_send_no_chunking(mock_post, tmp_path):
+    """时长 ≤ chunk_seconds：不切段，单次发送。"""
+    mock, calls = capture_posts(ok_resp())
+    mock_post.side_effect = mock.side_effect
+
+    def explode(*a, **kw):
+        raise AssertionError("短视频不应触发 ffmpeg")
+
+    audio = write_audio(tmp_path, content=real_wav_bytes(seconds=0.5))
+    with patch("asr.subprocess.run", side_effect=explode):
+        transcribe(str(audio), make_cfg_chunk(chunk_seconds=300))
+    assert len(calls) == 1
+
+
+@patch("asr.requests.post")
+def test_chunk_seconds_zero_falls_back_to_default(mock_post, tmp_path):
+    """chunk_seconds=0 视同省略 → 默认 300s，5s 音频单次发送。"""
+    mock, calls = capture_posts(ok_resp())
+    mock_post.side_effect = mock.side_effect
+    audio = write_audio(tmp_path, content=real_wav_bytes(seconds=5))
+
+    def explode(*a, **kw):
+        raise AssertionError("短视频不应触发 ffmpeg")
+
+    with patch("asr.subprocess.run", side_effect=explode):
+        transcribe(str(audio), make_cfg_chunk(chunk_seconds=0))
+    assert len(calls) == 1
+
+
+def test_chunk_seconds_invalid_raises(tmp_path):
+    audio = write_audio(tmp_path, content=real_wav_bytes(seconds=0.1))
+    with pytest.raises(AsrError, match="chunk_seconds"):
+        transcribe(str(audio), make_cfg_chunk(chunk_seconds="abc"))
+
+
+@patch("asr.requests.post")
+def test_split_failure_raises_and_no_post(mock_post, tmp_path):
+    audio = write_audio(tmp_path, content=real_wav_bytes(seconds=5))
+
+    def fail_segment(args, **kw):
+        import subprocess as sp
+        if "segment" in " ".join(str(x) for x in args):
+            raise sp.CalledProcessError(1, args)
+        raise AssertionError("不应有其他 ffmpeg 调用")
+
+    with patch("asr.subprocess.run", side_effect=fail_segment):
+        with pytest.raises(AsrError, match="切段失败"):
+            transcribe(str(audio), make_cfg_chunk(chunk_seconds=2))
+    mock_post.assert_not_called()
+    assert not list(tmp_path.glob("*.chunk_*.wav"))
+
+
+@patch("asr.requests.post")
+def test_mid_chunk_asr_failure_cleans_chunks(mock_post, tmp_path):
+    """某段 ASR 失败 → AsrError（带段号）且所有段文件清理。"""
+    mock, calls = capture_posts([
+        ok_resp({"text": "第一段。"}),
+        rq.ConnectionError("connection reset"),
+    ])
+    mock_post.side_effect = mock.side_effect
+    audio = write_audio(tmp_path, content=real_wav_bytes(seconds=5))
+    with pytest.raises(AsrError, match="段 2/3"):
+        transcribe(str(audio), make_cfg_chunk(chunk_seconds=2))
+    assert len(calls) == 2
+    assert not list(tmp_path.glob("*.chunk_*.wav"))
+
+
+@patch("asr.requests.post")
+def test_m4a_long_path_convert_then_chunk(mock_post, tmp_path):
+    """实际管线路径：m4a → 转码 16k wav → 切段 → 逐段发送 → 全部临时文件清理。"""
+    import subprocess as sp
+    texts = ["甲", "乙", "丙"]
+    mock, calls = capture_posts([ok_resp({"text": t}) for t in texts])
+    mock_post.side_effect = mock.side_effect
+    ffmpeg_calls = []
+    real_run = sp.run
+
+    def spy_run(args, **kw):
+        ffmpeg_calls.append(args)
+        return real_run(args, **kw)
+
+    audio = write_audio(tmp_path, name="BV1xx411c7mD.m4a", content=real_wav_bytes(seconds=5))
+    with patch("asr.subprocess.run", side_effect=spy_run):
+        result = transcribe(str(audio), make_cfg_chunk(chunk_seconds=2))
+
+    assert result == "甲乙丙"
+    assert len(ffmpeg_calls) == 2
+    assert "16000" in " ".join(map(str, ffmpeg_calls[0]))          # 第一次：转码
+    assert "segment" in " ".join(map(str, ffmpeg_calls[1]))        # 第二次：切段
+    assert [c["name"] for c in calls] == [
+        "BV1xx411c7mD.asr.chunk_000.wav",
+        "BV1xx411c7mD.asr.chunk_001.wav",
+        "BV1xx411c7mD.asr.chunk_002.wav",
+    ]
+    assert not list(tmp_path.glob("*.chunk_*.wav"))
+    assert not (tmp_path / "BV1xx411c7mD.asr.wav").exists()

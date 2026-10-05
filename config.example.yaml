@@ -7,6 +7,7 @@ asr:
   model: Qwen3-ASR-1.7B                # 透传给端点
   language: ""                         # 可选，透传给端点；空 = 不发送（Qwen3-ASR-1.7B vLLM 端点传 language=zh 会重复循环）
   temperature: 0.0                     # 透传给端点
+  chunk_seconds: 300                   # 长音频切段长度（秒）；省略/0 = 默认 300。端点文件上限约 30MB（实测 29MB 过、30MB 400），300s 16k 单声道 ≈ 9.6MB 留足余量
 output_dir: ./output
 temp_dir: ./temp
 bilibili:
