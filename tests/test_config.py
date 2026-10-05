@@ -45,7 +45,8 @@ def test_defaults_filled_for_optional(tmp_path):
     cfg = load_config(write_cfg(tmp_path, minimal))
     assert cfg["asr"]["api_key"] == ""
     assert cfg["asr"]["model"] == ""
-    assert cfg["asr"]["language"] == "zh"
+    assert cfg["asr"]["language"] == ""  # 默认不发送 language（端点兼容性）
+    assert cfg["asr"]["temperature"] == 0.0
     assert cfg["bilibili"]["cookie"] == ""
     assert cfg["timeout"] == {"download_s": 300, "asr_s": 600}
 
