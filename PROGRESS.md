@@ -3,9 +3,36 @@
 > Rolling session summaries. Newest first. Loaded at session start so the next session knows where work left off.
 > Each entry is 2-3 sentences. Older entries get pruned/consolidated when this file exceeds ~100 entries or ~8k chars.
 
+
+
+<!-- session-in-progress:start=2026-10-05T09:26:45.895Z -->
+## 2026-10-05 17:28 — T-013's remaining item is confirmed as "the JSON must contain non-empty Chinese ... _(in progress)_
+T-013's remaining item is confirmed as "the JSON must contain non-empty Chinese text" (the 213s video was an English song, so it doesn't count as Chinese). Now I'll grab a short Chinese video (≤6 min):
+<!-- end-session-in-progress -->
+## 2026-10-05 17:26 — ## ✅ 交接落盘完成，可以安全开新窗口
+
+**现场**：main @ `2a62df0` 已 push，工作树干净，服务已停，58 条测试全绿。保留物：`te...
+## ✅ 交接落盘完成，可以安全开新窗口
+
+**现场**：main @ `2a62df0` 已 push，工作树干净，服务已停，58 条测试全绿。保留物：`temp/BV1xx411c7mD.m4a`（17.6MB，T-016 可复用，**勿删**）、`output/` 里的验收产物。
+
+### 本轮成果（已合入 main）
+| 任务 | 内容 |
+|---|---|
+| **T-014/015** | asr.py 接入真实 vLLM：`temperature` 透传（你的原样）、**m4a→16k wav 自动转码**、**language 默认不发送**；+5 条测试（58 全绿） |
+| **T-013 验收** | 5/6 通过：/health ✅、213s 视频全链路 ✅（200 + 完整歌词 1898 字符 + .txt + temp 清空，9.8s 含转码）；**34 分钟视频 ❌** |
+
+### 实测发现的端点三坑（都已落文档 + 记忆）
+1. **m4a 输入服务端挂起**（>150s 无响应）→ 已用 ffmpeg 转码规避
+2. **传 `languag...
 ## Entries
 
 <!-- newest first -->
+
+## 2026-10-05 17:30 — T-013 端到端验收完成（6/6），v1 收官；下一步 T-016
+**T-013 收官**：最后一项"非空中文 text"一次通过——从首页热门榜选 BV1dPaZ6qEhd（298s 中文军事评论）POST /transcribe → 200（11.4s），2122 字符连贯中文 + `output/BV1dPaZ6qEhd_老外：这个中国机枪手….txt` 落盘 + temp 自动清空（仅剩 T-016 保留物 `BV1xx411c7mD.m4a`）。PLAN.md 验收 6 项全部勾选，T-013 → Done。
+**现场**：main 已 push（docs-only commit，无代码改动，58 条测试保持全绿）；服务已停；config.yaml 仍指向真实 vLLM（192.168.0.190:8001，/health 在线）。
+**下一步**：T-016 长音频支持——推荐方案 a：ffmpeg 切 ~5 分钟段逐段转写后拼接 text；直接用保留的 m4a（2055s/17.6MB）开发，修完用同一视频复验 200 + 完整文本。
 
 ## 2026-10-05 17:15 — 真实 vLLM 接入完成（T-014/015），T-013 验收 5/6；⬅️ 交接：剩中文长视频一项
 

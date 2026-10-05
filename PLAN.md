@@ -53,7 +53,7 @@ Phase 4（串行）: T-011 健壮性, T-012 README, T-013 端到端验收
 ## Acceptance criteria
 
 - [x] `python app.py` 启动服务，`curl localhost:5000/health` 返回 200
-- [ ] `curl -X POST localhost:5000/transcribe -H 'Content-Type: application/json' -d '{"bvid":"<真实BV号>"}'` 返回 200，JSON 含非空中文 text 与 file_path（stub ASR 已验证链路 200 + 中文 text + file_path；真实模型待 vLLM 在线，归 T-013）
+- [x] `curl -X POST localhost:5000/transcribe -H 'Content-Type: application/json' -d '{"bvid":"<真实BV号>"}'` 返回 200，JSON 含非空中文 text 与 file_path（真实 vLLM 验证：BV1dPaZ6qEhd 298s 中文视频，2122 字符，11.4s，2026-10-05）
 - [x] 转写 .txt 出现在配置的输出目录，文件名含 BV 号
 - [x] 成功转写后临时音频目录为空（自动清理生效）
 - [x] `config.yaml` 中 `asr.provider: local` 改为 `remote` 后无需改代码即可切换（e2e 验证 Bearer 送达）
@@ -103,7 +103,7 @@ Phase 4（串行）: T-011 健壮性, T-012 README, T-013 端到端验收
 
 ## Current step
 
-v1 代码完成（T-001~T-012 + T-014/015 真实 vLLM 接入，58 条测试全绿，main @ e3e0279）。T-013 验收 5/6：剩"长视频/中文视频"一项——34 分钟视频撞端点 audio_filesize_mb 上限（63.2MB wav → 400）。下一步：短中文视频（≤6 分钟）完成 T-013 验收，再做 T-016（长音频分段）。
+**v1 验收收官**（2026-10-05）：T-013 端到端验收 6/6 全过——最后一项用 BV1dPaZ6qEhd（298s 中文军事评论，2122 字符，11.4s）核销；58 条测试全绿。下一步：**T-016 长音频支持**——34 分钟视频（BV1xx411c7mD，63.2MB wav）撞端点 `audio_filesize_mb` 上限；采用推荐方案 a（ffmpeg 切 ~5 分钟段逐段转写拼接），用保留的 `temp/BV1xx411c7mD.m4a` 开发，修完用同一视频复验。
 
 ## Notes
 

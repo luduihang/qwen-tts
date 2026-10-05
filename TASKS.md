@@ -92,10 +92,11 @@
   - **Owns:** `README.md`
   - 简介、快速开始（装依赖/配 config/启动）、curl 示例（成功+错误）、配置项表、本地 vLLM 前置条件、故障排查
   - **Done when:** 按 README 从零走一遍能启动服务（自查记录进 PROGRESS）
-- [ ] T-013 — 端到端验收
+- [x] T-013 — 端到端验收
   - **Owns:** 无代码改动（仅验证 + PROGRESS/PLAN 勾选；如需修复则记入 Notes）
   - 真实 vLLM 在线 + 真实 BV 号跑 `POST /transcribe`，逐条核对 PLAN.md Acceptance criteria（6 项）
   - **Done when:** PLAN.md 验收标准全部勾选，结果写入 PROGRESS.md，commit + push
+  - **验收结果（2026-10-05）：** 6/6 全过。最后一项"非空中文 text"：BV1dPaZ6qEhd（298s 中文军事评论）→ 200，2122 字符 + .txt 落盘 + temp 清空，11.4s；前 5 项见 10-05 17:15 条目（/health、213s 全链路、.txt 命名、temp 清理、provider 切换、错误 JSON）
 
 ### Phase 5 — 真实 vLLM 接入（T-013 解 blocked 的前置代码变更）
 
@@ -116,7 +117,7 @@
 
 ## In progress
 
-- T-013 — 端到端验收（5/6 已核销）：✅ /health；✅ 213s 视频全链路（200+歌词 1898 字符+.txt+temp 清空）；❌ 34 分钟视频 ← 端点 400 audio_filesize_mb（63.2MB wav 超限）→ 依赖 T-016 或改用短中文视频（≤6 分钟）先完成"非空中文 text"验收。现场：`temp/BV1xx411c7mD.m4a`（17.6MB）已保留可复用；config.yaml 已指向真实 vLLM。
+（无；T-016 为下一个任务，Active 排队中）
 
 ## Done
 
@@ -132,6 +133,7 @@
 - T-010 — 管线测试，52 条全绿（commit `2932790` + 后续补充）
 - T-011 — 超时→504 JSON + 每请求日志（手动黑洞 IP 实测 3.5s 返回 504；commit `e7770f1`）
 - T-012 — README（commit `c6f5964`）
+- T-013 — 端到端验收 6/6（无代码改动；BV1dPaZ6qEhd 298s 中文视频 2122 字符收官，PLAN 验收全勾选）
 - T-014 — asr.py 接入真实 vLLM：temperature 透传 + m4a→16k wav 转码 + language 默认不发送（契约同步；commit `61192b6`）
 - T-015 — T-014 测试（58 条全绿；commit `3c7ce59`）
 
