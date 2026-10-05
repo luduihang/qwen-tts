@@ -7,6 +7,8 @@ import os
 import re
 import sys
 import time
+import traceback
+import uuid
 from pathlib import Path
 
 import yaml
@@ -104,13 +106,12 @@ def transcription_file_name(bvid, title):
     return f"{bvid}_{clean_title(title)}.txt"
 
 
-def _error_response(code, exc, cfg, bvid, started):
-    """按契约返回错误 JSON；失败时保留临时音频并在 message 中给出路径。"""
+def _error_response(code, exc, cfg, bvid, started, audio_path):
+    """按契约返回错误 JSON；失败时保留临时音频并在 message 中给出实际路径。"""
     message = str(exc)
-    if isinstance(bvid, str) and BV_RE.match(bvid):
-        temp = Path(cfg["temp_dir"]) / f"{bvid}.m4a"
-        if temp.exists():
-            message += f"（临时音频已保留: {temp}）"
+    p = Path(audio_path)
+    if p.exists():
+        message += f"（临时音频已保留: {p}）"
     print(
         f"[transcribe] bvid={bvid} error={code} elapsed={time.time() - started:.1f}s msg={message}",
         flush=True,
@@ -132,17 +133,29 @@ def create_app(cfg):
         bvid = body.get("bvid") or ""
         started = time.time()
         print(f"[transcribe] start bvid={bvid}", flush=True)
+        # per-request 唯一临时文件名：同 BV 并发转写互不抢文件（T-017）；
+        # .asr.wav / .chunk_*.wav 由该 stem 派生，自动隔离
+        session = uuid.uuid4().hex[:8]
+        audio_path = str(Path(cfg["temp_dir"]) / f"{bvid}_{session}.m4a")
         try:
-            title, duration_s, audio_path = get_audio(bvid, cfg)
+            title, duration_s, audio_path = get_audio(bvid, cfg, dest_path=audio_path)
             text = transcribe(audio_path, cfg)
             out_path = Path(cfg["output_dir"]) / transcription_file_name(bvid, title)
             out_path.parent.mkdir(parents=True, exist_ok=True)
             out_path.write_text(text, encoding="utf-8")
             os.remove(audio_path)  # 成功后清理临时音频
         except BiliError as e:
-            return _error_response(e.code, e, cfg, bvid, started)
+            return _error_response(e.code, e, cfg, bvid, started, audio_path)
         except AsrError as e:
-            return _error_response(e.code, e, cfg, bvid, started)
+            return _error_response(e.code, e, cfg, bvid, started, audio_path)
+        except Exception as e:
+            # 未预期异常 → 500 JSON（不是 HTML），堆栈进日志（T-017）
+            traceback.print_exc()
+            print(
+                f"[transcribe] bvid={bvid} error=internal elapsed={time.time() - started:.1f}s msg={e}",
+                flush=True,
+            )
+            return jsonify(error={"code": "internal", "message": f"内部错误: {e}"}), 500
         print(
             f"[transcribe] bvid={bvid} ok elapsed={time.time() - started:.1f}s file={out_path}",
             flush=True,

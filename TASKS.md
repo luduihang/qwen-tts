@@ -14,6 +14,7 @@
     model: Qwen3-ASR-1.7B                # 透传给端点
     language: ""                         # 可选，透传给端点；空 = 不发送（Qwen3-ASR-1.7B vLLM 端点传 language=zh 会重复循环，模型自身能自动检测中文）
     temperature: 0.0                     # 可选，透传给端点
+    chunk_seconds: 300                   # 可选，长音频切段长度（秒）；省略/0 = 默认 300
   output_dir: ./output
   temp_dir: ./temp
   bilibili:
@@ -23,9 +24,10 @@
     asr_s: 600
   ```
 - 转码约定：ASR 端点（vLLM Qwen3-ASR）只接受 wav；`asr.transcribe` 对非 wav 输入（如 m4a/AAC）先用本地 ffmpeg 转 16k 单声道 wav（临时文件 `{音频名}.asr.wav`，发送后删除），ffmpeg 缺失/转码失败抛 `AsrError`。`language` 为空时不进 form（端点兼容性问题见配置注释）
-- `bili.get_audio(bvid, cfg) -> (title, duration_s, local_path)`，失败抛 `BiliError(message, code)`，code ∈ {`invalid_bvid`, `not_found`, `fetch_failed`, `timeout`}
+- 长音频切段约定（T-016）：端点文件大小上限约 30MB（实测 29MB wav 可过、30MB → 400 audio_filesize_mb）；`asr.transcribe` 对时长超过 `chunk_seconds`（默认 300s）的 wav 用 ffmpeg segment 流拷贝切段（临时文件 `{音频名}.chunk_NNN.wav`，发送后删除），逐段转写后按序拼接 text（无分隔符，中文场景）；切段失败抛 `AsrError`；wav 时长用标准库 wave 解析，解析失败（非标准 PCM）视为 0 = 不切段原样发送
+- `bili.get_audio(bvid, cfg, dest_path=None) -> (title, duration_s, local_path)`，失败抛 `BiliError(message, code)`，code ∈ {`invalid_bvid`, `not_found`, `fetch_failed`, `timeout`}；dest_path 空时默认 `temp_dir/{bvid}.m4a`，管线传 `temp_dir/{bvid}_{uuid8}.m4a`（并发请求隔离，T-017；.asr.wav/chunk 由其 stem 派生，自动隔离）
 - `asr.transcribe(audio_path, cfg) -> str`（中文文本），失败抛 `AsrError(message)`，可选属性 `code`（默认 `asr_failed`，超时时 `timeout`）
-- 错误 JSON：`{"error": {"code", "message"}}`；映射：`invalid_bvid`→400，`not_found`→404，`fetch_failed`/`asr_failed`→502，`timeout`→504
+- 错误 JSON：`{"error": {"code", "message"}}`；映射：`invalid_bvid`→400，`not_found`→404，`fetch_failed`/`asr_failed`→502，`timeout`→504，`internal`→500（路由 generic Exception 统一捕获，T-017）
 - 转写文件名：`{bvid}_{标题清洗}.txt`（清洗：去除 `\/:*?"<>|`，空白压缩，截断 40 字符）
 
 ## Active
@@ -109,15 +111,22 @@
   - **Owns:** `tests/test_asr.py`
   - 覆盖：temperature 进 form、wav 原样发送（不转码）、m4a 转码后发送且临时 wav 清理、转码失败 → AsrError
   - **Done when:** `pytest tests/test_asr.py -q` 全绿
-- [ ] T-016 — 长音频支持（audio_filesize_mb 超限）
-  - **Owns:** `asr.py`（或新增 chunking 模块）+ 其测试
-  - **背景（2026-10-05 实测）**：34 分钟视频（BV1xx411c7mD，2055s）的 16k mono wav = 63.2MB → 端点 400 `Maximum file size exceeded (audio_filesize_mb=63.22)`；213s 的 6.8MB wav 正常。具体上限未知（6.8~63.2MB 之间），服务端参数 `audio_filesize_mb`（vLLM 启动侧可调，见 PLAN 环境参考）。
-  - **候选方案（新 session 拍板）**：a) 分段：ffmpeg 切 N 段（如 5 分钟/段）逐段转写后拼接 text（最稳，推荐）；b) 8k mono 转码（63.2→31.6MB，仍可能超限，不推荐单独用）；c) 服务端调大 `--max-audio-filesize-mb` 类参数（需动 vLLM 宿主机）
+- [x] T-016 — 长音频支持（audio_filesize_mb 超限）
+  - **验收（2026-10-05）：** 34 分钟视频 BV1xx411c7mD 真实全管线 ×2 成功（17:47→18:17 1793.8s、18:26→18:52 1579.0s，均 200 + 587KB .txt + temp 清空）；65 条测试全绿
+  - **Owns:** `asr.py`（或新增 chunking 模块）+ 其测试 + `config.example.yaml`（chunk_seconds）
+  - **背景（2026-10-05 实测）**：34 分钟视频（BV1xx411c7mD，2055s）的 16k mono wav = 63.2MB → 端点 400 `Maximum file size exceeded (audio_filesize_mb=63.22)`；213s 的 6.8MB wav 正常。上限已探明：29MB 可过、30MB → 400（约 30MB，见 PLAN 环境参考）。
+  - **实现（2026-10-05，方案 a 分段）**：`asr.chunk_seconds`（默认 300s）：时长超标的 wav → ffmpeg segment 流拷贝切段 → 逐段转写按序拼接；单段 16k mono ≈ 9.6MB 留 3 倍余量；段/转码临时文件 finally 统一清理
   - **Done when:** 34 分钟视频（或 ≥20 分钟）真实 `POST /transcribe` 返回 200 且 text 非空完整；`pytest tests/ -q` 全绿
+- [x] T-017 — 同一 BV 并发转写 → 500 HTML（temp 文件名冲突 + 路由未捕 generic Exception）
+  - **验收（2026-10-05）：** 修复 = temp 文件名 `{bvid}_{uuid8}.m4a`（get_audio 新增可选 dest_path，.asr.wav/chunk 由 stem 派生自动隔离）+ 路由 generic Exception → 500 JSON（code=internal）；+3 测试（68 全绿）；真实并发验证：同 BV 两请求均 200（16.3s/22.9s）且 temp 无残留
+  - **Owns:** `app.py`（及/或 bili.py、asr.py 的 temp 命名）+ 其测试
+  - **背景（2026-10-05 实测）**：两个同 BV 的 /transcribe 并发（Flask dev server threaded）共享 `temp/{bvid}.m4a`/`.asr.wav`/`.chunk_*.wav`，一方完成清理后另一方 `FileNotFoundError` → 500 HTML
+  - **候选方案**：a) temp 文件名加 per-request uuid 后缀（隔离，改动最小，推荐）；b) 同 bvid 处理中返回 409（需请求状态表，多用户场景再说）；另外路由对 generic Exception 统一 500 JSON
+  - **Done when:** 并发重复请求不再 500（两请求均正常完成或 409）；路由任何错误都返回 JSON；`pytest tests/ -q` 全绿
 
 ## In progress
 
-（无；T-016 为下一个任务，Active 排队中）
+（无）
 
 ## Done
 
@@ -134,6 +143,8 @@
 - T-011 — 超时→504 JSON + 每请求日志（手动黑洞 IP 实测 3.5s 返回 504；commit `e7770f1`）
 - T-012 — README（commit `c6f5964`）
 - T-013 — 端到端验收 6/6（无代码改动；BV1dPaZ6qEhd 298s 中文视频 2122 字符收官，PLAN 验收全勾选）
+- T-016 — 长音频切段：asr.chunk_seconds 默认 300s，ffmpeg segment 流拷贝，逐段拼接 + finally 统一清理（+7 测试，65 全绿；34 分钟视频 ×2 真实成功；上限探明约 30MB 落文档）
+- T-017 — 并发 500 修复：uuid temp 命名 + 路由 500 JSON（+3 测试，68 全绿；真实并发 ×2 均 200）
 - T-014 — asr.py 接入真实 vLLM：temperature 透传 + m4a→16k wav 转码 + language 默认不发送（契约同步；commit `61192b6`）
 - T-015 — T-014 测试（58 条全绿；commit `3c7ce59`）
 

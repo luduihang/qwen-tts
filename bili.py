@@ -1,8 +1,9 @@
 """B 站客户端：BV 号 → 标题/时长 + DASH 音频流下载到临时目录。
 
 契约（见 TASKS.md 契约总览）：
-    get_audio(bvid, cfg) -> (title, duration_s, local_path)
-    失败抛 BiliError(message, code)，code ∈ {invalid_bvid, not_found, fetch_failed}
+    get_audio(bvid, cfg, dest_path=None) -> (title, duration_s, local_path)
+    失败抛 BiliError(message, code)，code ∈ {invalid_bvid, not_found, fetch_failed, timeout}
+    dest_path 空时默认 temp_dir/{bvid}.m4a；管线传 per-request 唯一名（并发隔离，T-017）
 """
 import re
 from pathlib import Path
@@ -66,10 +67,11 @@ def _get_json(url, params, headers, timeout):
     return data
 
 
-def get_audio(bvid, cfg):
+def get_audio(bvid, cfg, dest_path=None):
     """BV 号 → 音频落盘。
 
-    返回 (title, duration_s, local_path)；local_path = temp_dir/{bvid}.m4a。
+    返回 (title, duration_s, local_path)；local_path = dest_path，
+    dest_path 为空时默认 temp_dir/{bvid}.m4a。
     """
     if not isinstance(bvid, str) or not BV_RE.match(bvid):
         raise BiliError(f"非法 BV 号: {bvid!r}", "invalid_bvid")
@@ -95,7 +97,10 @@ def get_audio(bvid, cfg):
     if not audio_url:
         raise BiliError("playurl 音频流缺少 baseUrl", "fetch_failed")
 
-    out_path = Path(cfg["temp_dir"]) / f"{bvid}.m4a"
+    if dest_path is None:
+        out_path = Path(cfg["temp_dir"]) / f"{bvid}.m4a"
+    else:
+        out_path = Path(dest_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     try:
         with requests.get(

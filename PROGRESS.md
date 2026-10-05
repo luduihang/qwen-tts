@@ -6,8 +6,16 @@
 
 
 <!-- session-in-progress:start=2026-10-05T09:26:45.895Z -->
-## 2026-10-05 17:28 — T-013's remaining item is confirmed as "the JSON must contain non-empty Chinese ... _(in progress)_
-T-013's remaining item is confirmed as "the JSON must contain non-empty Chinese text" (the 213s video was an English song, so it doesn't count as Chinese). Now I'll grab a short Chinese video (≤6 min):
+## 2026-10-05 19:01 — 你贴的日志（Running: 0, Waiting: 0, KV 0%）正好佐证了：18:52 时服务端是干净的，慢不是队列问题，是**单请求内模型循环生成**... _(in progress)_
+你贴的日志（Running: 0, Waiting: 0, KV 0%）正好佐证了：18:52 时服务端是干净的，慢不是队列问题，是**单请求内模型循环生成**烧时间。
+
+## 分段必要性分析（结论：必要，不是可选项）
+
+| 论据 | 证据 |
+|---|---|
+| **① 硬上限，无客户端解法** | 端点 `audio_filesize_mb` 上限 ≈30MB（实测 29MB 过 / 30MB 秒 400）。16k mono wav = 32KB/s → **单次请求理论极限 ≈16 分钟音频**；你的 34 分钟 = 63.2MB，不切必然 400。替代方案都出局：8k mono 降到 31.6MB 仍超限；调服务端参数要动宿主机 |
+| **② token 预算保护** | `max-model-len 32768`。单发长音频输出 token 不可控，撞顶会**静默截断**（拿到半份文本还以为是全的）；分段后单段输出有界（300s 语音段约 10-15s 生成完，最坏撞顶也就 ~9 分钟有界） |
+| **③ 失败隔离** | 单发 34 分钟若在第四十分钟挂掉（超...
 <!-- end-session-in-progress -->
 ## 2026-10-05 17:26 — ## ✅ 交接落盘完成，可以安全开新窗口
 
@@ -28,6 +36,13 @@ T-013's remaining item is confirmed as "the JSON must contain non-empty Chinese 
 ## Entries
 
 <!-- newest first -->
+
+## 2026-10-05 19:05 — T-016 长音频切段收官 + T-017 并发 500 修复；v1 无剩余任务
+**T-016 完成**：切段实现（asr.chunk_seconds 默认 300s，ffmpeg segment 流拷贝，逐段按序拼接，finally 统一清理段/转码临时文件）+ 7 条新测试；真实 e2e 34 分钟视频 BV1xx411c7mD ×2 全成功（1793.8s / 1579.0s，均 200 + 587KB .txt + temp 清空）。上限探明约 30MB（29MB 过 / 30MB 400）落 PLAN/README/契约。
+**34 分钟视频为何要 ~26 分钟（非 bug）**：该视频是音乐合集，模型在纯器乐段循环生成直到撞 max-model-len 32768（每段 ~9 分钟），人声段 ~10s；循环输出属模型质量限制（README 故障排查已记）。用户 vLLM 服务端日志确认 18:52 队列干净（Running 0 / KV 0%），慢在单请求内生成。
+**T-017 完成**：同 BV 并发转写撞 temp 文件名 → 一方清理后另一方 FileNotFoundError → 500 HTML。修复 = 管线 temp 用 `{bvid}_{uuid8}.m4a`（get_audio 新增可选 dest_path，.asr.wav/chunk 由 stem 派生自动隔离）+ 路由 generic Exception → 500 JSON（code=internal，堆栈进日志）；+3 测试，68 全绿；真实并发验证：同 BV 两请求均 200（16.3s/22.9s）且 temp 无残留。
+**我的失误（教训已入记忆库）**：探大小上限时发了 4 个共约 30 分钟音频的静音 wav——小于上限的文件会触发真实转写，把远端 GPU 队列堵了约 30 分钟，拖长第一次 e2e。教训：探上限只发超限文件（400 立即返回，不占 GPU）。
+**现场**：main 已 push（2 commits：T-016 代码、T-017 代码+全部文档），服务已停，68 条测试全绿，端点正常；T-013/T-016/T-017 全部核销，v1 无剩余任务。保留物：output/ 里 3 份验收产物（含 34 分钟视频 587KB 转写）。
 
 ## 2026-10-05 17:30 — T-013 端到端验收完成（6/6），v1 收官；下一步 T-016
 **T-013 收官**：最后一项"非空中文 text"一次通过——从首页热门榜选 BV1dPaZ6qEhd（298s 中文军事评论）POST /transcribe → 200（11.4s），2122 字符连贯中文 + `output/BV1dPaZ6qEhd_老外：这个中国机枪手….txt` 落盘 + temp 自动清空（仅剩 T-016 保留物 `BV1xx411c7mD.m4a`）。PLAN.md 验收 6 项全部勾选，T-013 → Done。

@@ -190,6 +190,19 @@ def test_playurl_without_dash_audio(mock_get, tmp_path):
 
 
 @patch("bili.requests.get")
+def test_dest_path_used_when_provided(mock_get, tmp_path):
+    """dest_path 指定时下载到指定路径（管线并发隔离用，T-017）。"""
+    cfg = make_cfg(tmp_path)
+    mock_get.side_effect = [json_resp(ok_view()), json_resp(ok_play()), stream_resp()]
+    custom = tmp_path / "custom" / "my" / "audio.m4a"
+    title, duration_s, path = get_audio(VALID_BVID, cfg, dest_path=custom)
+    p = Path(path)
+    assert p == custom
+    assert p.read_bytes() == b"FAKE-M4A"
+    assert title == "测试/视频:标题" and duration_s == 123
+
+
+@patch("bili.requests.get")
 def test_download_http_403_is_fetch_failed_and_no_file(mock_get, tmp_path):
     cfg = make_cfg(tmp_path)
     mock_get.side_effect = [

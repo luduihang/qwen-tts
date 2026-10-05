@@ -41,15 +41,25 @@ def write_temp_audio(cfg):
     return p
 
 
+def fake_get_audio_ok(bvid, cfg, dest_path=None, title="T", duration_s=10):
+    """模拟 get_audio：把“下载到的”音频写入 dest_path（T-017 后为 per-request 唯一名）并返回契约三元组。"""
+    p = Path(dest_path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_bytes(b"FAKE-AUDIO")
+    return (title, duration_s, str(p))
+
+
 def post_bvid(client, bvid):
     return client.post("/transcribe", json={"bvid": bvid})
 
 
 def test_happy_path(tmp_path):
     cfg = make_cfg(tmp_path)
-    temp_audio = write_temp_audio(cfg)
     with patch(
-        "app.get_audio", return_value=("Rick Astley 官方 MV", 213, str(temp_audio))
+        "app.get_audio",
+        side_effect=lambda bvid, cfg_, dest_path=None: fake_get_audio_ok(
+            bvid, cfg_, dest_path, title="Rick Astley 官方 MV", duration_s=213
+        ),
     ), patch("app.transcribe", return_value="Never gonna give you up."):
         client = make_client(cfg)
         r = post_bvid(client, BVID)
@@ -65,7 +75,8 @@ def test_happy_path(tmp_path):
     assert out.parent == Path(cfg["output_dir"])
     assert out.name == f"{BVID}_Rick Astley 官方 MV.txt"
     assert out.read_text(encoding="utf-8") == "Never gonna give you up."
-    assert not temp_audio.exists()  # 成功后临时音频已删
+    # 成功后临时音频已删（uuid 命名下 temp_dir 无任何残留）
+    assert not list(Path(cfg["temp_dir"]).glob("*.m4a"))
 
 
 def test_invalid_bvid_400(tmp_path):
@@ -94,24 +105,26 @@ def test_not_found_404(tmp_path):
 
 
 def test_fetch_failed_502_and_temp_kept(tmp_path):
+    def fake_get_fail(bvid, cfg, dest_path=None):
+        p = Path(dest_path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b"PARTIAL-AUDIO")  # 模拟部分下载残留
+        raise BiliError("B 站接口错误 code=-500", "fetch_failed")
+
     cfg = make_cfg(tmp_path)
-    temp_audio = write_temp_audio(cfg)
-    with patch(
-        "app.get_audio", side_effect=BiliError("B 站接口错误 code=-500", "fetch_failed")
-    ):
+    with patch("app.get_audio", side_effect=fake_get_fail):
         client = make_client(cfg)
         r = post_bvid(client, BVID)
     assert r.status_code == 502
     err = r.get_json()["error"]
     assert err["code"] == "fetch_failed"
-    assert str(temp_audio) in err["message"]  # 错误信息含保留路径
-    assert temp_audio.exists()  # 失败保留临时音频
+    kept = list(Path(cfg["temp_dir"]).glob("*.m4a"))
+    assert len(kept) == 1 and str(kept[0]) in err["message"]  # 错误信息含保留路径
 
 
 def test_asr_error_502_and_temp_kept(tmp_path):
     cfg = make_cfg(tmp_path)
-    temp_audio = write_temp_audio(cfg)
-    with patch("app.get_audio", return_value=("T", 10, str(temp_audio))), patch(
+    with patch("app.get_audio", side_effect=fake_get_audio_ok), patch(
         "app.transcribe", side_effect=AsrError("ASR 请求失败: connection refused")
     ):
         client = make_client(cfg)
@@ -119,21 +132,20 @@ def test_asr_error_502_and_temp_kept(tmp_path):
     assert r.status_code == 502
     err = r.get_json()["error"]
     assert err["code"] == "asr_failed"
-    assert str(temp_audio) in err["message"]
-    assert temp_audio.exists()
+    kept = list(Path(cfg["temp_dir"]).glob("*.m4a"))
+    assert len(kept) == 1 and str(kept[0]) in err["message"]
 
 
 def test_asr_timeout_504_and_temp_kept(tmp_path):
     cfg = make_cfg(tmp_path)
-    temp_audio = write_temp_audio(cfg)
-    with patch("app.get_audio", return_value=("T", 10, str(temp_audio))), patch(
+    with patch("app.get_audio", side_effect=fake_get_audio_ok), patch(
         "app.transcribe", side_effect=AsrError("ASR 请求超时（>1s）", "timeout")
     ):
         client = make_client(cfg)
         r = post_bvid(client, BVID)
     assert r.status_code == 504
     assert r.get_json()["error"]["code"] == "timeout"
-    assert temp_audio.exists()
+    assert len(list(Path(cfg["temp_dir"]).glob("*.m4a"))) == 1
 
 
 def test_bili_timeout_504(tmp_path):
@@ -176,3 +188,52 @@ def test_non_json_body_400(tmp_path):
     )
     assert r.status_code == 400
     assert r.get_json()["error"]["code"] == "invalid_bvid"
+
+
+def test_generic_exception_500_json(tmp_path):
+    """未预期异常 → 500 JSON（不是 Flask 默认 500 HTML），T-017。"""
+    cfg = make_cfg(tmp_path)
+    with patch("app.get_audio", side_effect=fake_get_audio_ok), patch(
+        "app.transcribe", side_effect=RuntimeError("boom")
+    ):
+        client = make_client(cfg)
+        r = post_bvid(client, BVID)
+    assert r.status_code == 500
+    err = r.get_json()["error"]
+    assert err["code"] == "internal"
+    assert "boom" in err["message"]
+
+
+def test_concurrent_same_bvid_both_ok(tmp_path):
+    """同 BV 并发两请求：uuid temp 名隔离，均 200 且临时文件互不干扰，T-017。"""
+    import threading
+
+    cfg = make_cfg(tmp_path)
+    Path(cfg["temp_dir"]).mkdir(parents=True, exist_ok=True)
+    dests = []
+    barrier = threading.Barrier(2, timeout=10)  # 保证两请求同时处于“已下载未清理”窗口
+
+    def fake_get(bvid, cfg_, dest_path=None):
+        dests.append(Path(dest_path))
+        p = Path(dest_path)
+        p.write_bytes(b"FAKE-AUDIO")
+        barrier.wait()
+        return ("标题", 10, str(p))
+
+    results = []
+
+    def post():
+        with patch("app.get_audio", side_effect=fake_get), patch(
+            "app.transcribe", return_value="文本"
+        ):
+            results.append(make_client(cfg).post("/transcribe", json={"bvid": BVID}).status_code)
+
+    threads = [threading.Thread(target=post) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=30)
+
+    assert results == [200, 200]
+    assert len(set(dests)) == 2  # 两请求用了不同的临时文件名
+    assert not list(Path(cfg["temp_dir"]).glob("*.m4a"))  # 各自清理，无残留

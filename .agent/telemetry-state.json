@@ -1,23 +1,25 @@
 {
-  "currentSessionId": "d8cb9842-bb41-46f3-a187-d579f484a6e4",
-  "previousSessionId": "78c275ba-855f-42b2-879b-ffddbfe71098",
-  "previousSessionFile": null,
+  "currentSessionId": "f188d76a-4063-4e0c-b6f9-a3af42ca5cdc",
+  "previousSessionId": "459a3f75-3c32-4ec0-814d-ce4952bf0b03",
+  "previousSessionFile": "/home/kipley/.pi/agent/sessions/--home-kipley-Documents-code-learning-qwen-tts--/2026-10-03T12-36-46-314Z_01a101c4-546a-72d1-8ec1-6617e089f81a.jsonl",
   "previousSessionProject": "/home/kipley/documents/code/learning/qwen-tts",
   "projectKey": "/home/kipley/documents/code/learning/qwen-tts",
   "cumulative": {
-    "inputTokens": 19533,
-    "outputTokens": 3488,
+    "inputTokens": 4181908,
+    "outputTokens": 84127,
     "cacheReadTokens": 0,
     "cacheWriteTokens": 0,
     "cost": 0,
     "lessonHits": [],
-    "skills": [],
+    "skills": [
+      "plan-then-implement"
+    ],
     "gates": "unknown",
     "models": [
       "Qwen3.8-27B"
     ],
-    "turnIndex": 1,
-    "userTurns": 0,
+    "turnIndex": 62,
+    "userTurns": 4,
     "adjustedCost": 0,
     "warnedCost": false
   }

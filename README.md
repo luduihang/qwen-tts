@@ -68,9 +68,9 @@ curl -X POST localhost:5000/transcribe \
 > **vLLM Qwen3-ASR 端点已知行为**（2026-10-05 实测，详见 DECISIONS.md / PLAN 环境参考）：
 > ① 只接受 wav —— m4a/AAC 会在服务端挂起，asr.py 已自动用 ffmpeg 转码（需系统装 ffmpeg）；
 > ② 不要传 `language=zh`（`asr.language` 保持空）—— 端点会重复循环，模型自身能自动检测语言；
-> ③ 音频文件大小有上限（`audio_filesize_mb`）—— 16k wav 约 10.7MB/分钟，34 分钟视频（63.2MB）会 400，长音频支持见 T-016。
+> ③ 音频文件大小有上限（`audio_filesize_mb`，上限约 30MB：实测 29MB 过、30MB → 400）—— asr.py 已按 `asr.chunk_seconds`（默认 300s，单段 ≈ 9.6MB）自动 ffmpeg 切段逐段转写拼接，长音频已支持（T-016）。
 
-转写成功后临时音频（`temp/{bvid}.m4a`）自动删除；失败时保留以便排查。
+转写成功后临时音频（`temp/{bvid}_{uuid}.m4a`，per-request 唯一名，并发隔离）自动删除；失败时保留以便排查（路径在错误 message 里）。
 
 ## 配置项（config.yaml）
 
@@ -80,7 +80,9 @@ curl -X POST localhost:5000/transcribe \
 | `asr.url` | ✅ | — | 完整转写端点 URL（…/v1/audio/transcriptions） |
 | `asr.api_key` | remote 必填 | `""` | remote 时作 `Authorization: Bearer <key>` |
 | `asr.model` | | `""` | 可选，非空时透传给端点 |
-| `asr.language` | | `zh` | 透传给端点 |
+| `asr.language` | | `""` | 透传给端点；**保持空**（传 `zh` 会触发端点循环，模型自身能自动检测语言） |
+| `asr.temperature` | | `0.0` | 透传给端点 |
+| `asr.chunk_seconds` | | `300` | 长音频切段长度（秒）；省略/0 = 默认 300。端点文件上限约 30MB，单段 16k wav ≈ 9.6MB 留足余量 |
 | `output_dir` | ✅ | — | 转写 `.txt` 输出目录（启动自动创建） |
 | `temp_dir` | ✅ | — | 临时音频目录（启动自动创建） |
 | `bilibili.cookie` | | `""` | 可选 B 站登录态；部分视频/音质需登录 |
@@ -98,9 +100,10 @@ curl -X POST localhost:5000/transcribe \
 | 404 `not_found` | 视频可能需登录态：把 B 站 Cookie 写进 `bilibili.cookie`；或视频已删除/不可见 |
 | 502 `fetch_failed` | B 站接口/CDN 异常，重试；持续失败时检查网络与 Cookie |
 | 502 `asr_failed` | ASR 服务未启动或 URL 错误；先 `curl` 直连 `asr.url` 验证 |
-| 502 `asr_failed` | ASR 服务未启动或 URL 错误；先 `curl` 直连 `asr.url` 验证。若 message 含 `Maximum file size exceeded`：音频太长，见端点行为③（可先换短视频验证链路） |
+| 502 `asr_failed` | ASR 服务未启动或 URL 错误；先 `curl` 直连 `asr.url` 验证。若 message 含 `Maximum file size exceeded`：单段仍超限，调小 `asr.chunk_seconds`（长音频默认已自动切段，一般不会再遇到） |
 | 504 `timeout` | 音频太长或 ASR 太慢：调大 `timeout.asr_s`；临时音频已保留（见 message 中路径） |
-| 转写文本重复循环 | 检查 `asr.language` 是否为空（传 `zh` 会触发端点循环，见端点行为②） |
+| 500 `internal` | 未预期异常（堆栈在服务端日志）；先重试，持续出现报 issue |
+| 转写文本重复循环 | ① 检查 `asr.language` 是否为空（传 `zh` 会触发端点循环，见端点行为②）；② 纯音乐/无语音内容上模型也会自循环（模型限制，语音内容不受影响） |
 | 转写文本为空/异常 | 检查模型是否为语音转写模型（ASR，不是 TTS） |
 
 ## 开发与测试
