@@ -22,7 +22,7 @@ REQUIRED_KEYS = (("asr", "provider"), ("asr", "url"), ("output_dir",), ("temp_di
 
 #: 可选项默认值（缺省时补全）
 DEFAULTS = {
-    "asr": {"api_key": "", "model": "", "language": "zh"},
+    "asr": {"api_key": "", "model": "", "language": "", "temperature": 0.0},
     "bilibili": {"cookie": ""},
     "timeout": {"download_s": 300, "asr_s": 600},
 }

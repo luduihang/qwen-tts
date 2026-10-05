@@ -2,10 +2,11 @@
 
 asr:
   provider: local                      # local | remote
-  url: http://127.0.0.1:8000/v1/audio/transcriptions  # 完整端点 URL
+  url: http://192.168.0.190:8001/v1/audio/transcriptions  # 完整端点 URL（局域网 vLLM）
   api_key: ""                          # remote 必填，local 可空
-  model: ""                            # 可选，透传给端点
-  language: zh
+  model: Qwen3-ASR-1.7B                # 透传给端点
+  language: ""                         # 可选，透传给端点；空 = 不发送（Qwen3-ASR-1.7B vLLM 端点传 language=zh 会重复循环）
+  temperature: 0.0                     # 透传给端点
 output_dir: ./output
 temp_dir: ./temp
 bilibili:

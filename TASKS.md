@@ -9,10 +9,11 @@
   ```yaml
   asr:
     provider: local                      # local | remote
-    url: http://127.0.0.1:8000/v1/audio/transcriptions  # 完整端点 URL
+    url: http://192.168.0.190:8001/v1/audio/transcriptions  # 完整端点 URL（局域网 vLLM）
     api_key: ""                          # remote 必填，local 可空
-    model: ""                            # 可选，透传给端点
-    language: zh
+    model: Qwen3-ASR-1.7B                # 透传给端点
+    language: ""                         # 可选，透传给端点；空 = 不发送（Qwen3-ASR-1.7B vLLM 端点传 language=zh 会重复循环，模型自身能自动检测中文）
+    temperature: 0.0                     # 可选，透传给端点
   output_dir: ./output
   temp_dir: ./temp
   bilibili:
@@ -21,6 +22,7 @@
     download_s: 300
     asr_s: 600
   ```
+- 转码约定：ASR 端点（vLLM Qwen3-ASR）只接受 wav；`asr.transcribe` 对非 wav 输入（如 m4a/AAC）先用本地 ffmpeg 转 16k 单声道 wav（临时文件 `{音频名}.asr.wav`，发送后删除），ffmpeg 缺失/转码失败抛 `AsrError`。`language` 为空时不进 form（端点兼容性问题见配置注释）
 - `bili.get_audio(bvid, cfg) -> (title, duration_s, local_path)`，失败抛 `BiliError(message, code)`，code ∈ {`invalid_bvid`, `not_found`, `fetch_failed`, `timeout`}
 - `asr.transcribe(audio_path, cfg) -> str`（中文文本），失败抛 `AsrError(message)`，可选属性 `code`（默认 `asr_failed`，超时时 `timeout`）
 - 错误 JSON：`{"error": {"code", "message"}}`；映射：`invalid_bvid`→400，`not_found`→404，`fetch_failed`/`asr_failed`→502，`timeout`→504
@@ -94,6 +96,18 @@
   - **Owns:** 无代码改动（仅验证 + PROGRESS/PLAN 勾选；如需修复则记入 Notes）
   - 真实 vLLM 在线 + 真实 BV 号跑 `POST /transcribe`，逐条核对 PLAN.md Acceptance criteria（6 项）
   - **Done when:** PLAN.md 验收标准全部勾选，结果写入 PROGRESS.md，commit + push
+
+### Phase 5 — 真实 vLLM 接入（T-013 解 blocked 的前置代码变更）
+
+- [ ] T-014 — asr.py 接入真实 vLLM（temperature 透传 + m4a→wav 转码）
+  - **Owns:** `asr.py`, `config.example.yaml`
+  - **Contract:** 见契约总览（temperature 透传；非 wav 输入先 ffmpeg 转 16k mono wav）
+  - 实测背景：192.168.0.190:8001 的 vLLM Qwen3-ASR-1.7B 端点对 m4a 输入挂起（>150s 无响应），wav 正常（213s 音频 8.9s 转完）；`language`/`temperature` 参数均被接受
+  - **Done when:** `pytest tests/ -q` 全绿；真实端点用 m4a 输入（经转码）返回非空文本
+- [ ] T-015 — T-014 测试
+  - **Owns:** `tests/test_asr.py`
+  - 覆盖：temperature 进 form、wav 原样发送（不转码）、m4a 转码后发送且临时 wav 清理、转码失败 → AsrError
+  - **Done when:** `pytest tests/test_asr.py -q` 全绿
 
 ## In progress
 
