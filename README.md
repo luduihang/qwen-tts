@@ -9,7 +9,7 @@
 ## 快速开始
 
 ```bash
-# 1. 装依赖（Python 3.10+）
+# 1. 装依赖（Python 3.10+；另需系统已装 ffmpeg —— ASR 端点只收 wav，m4a 会先本地转码）
 pip install -r requirements.txt
 
 # 2. 配置（config.yaml 不入库，可含敏感信息）
@@ -20,8 +20,8 @@ cp config.example.yaml config.yaml
 python app.py
 ```
 
-前置条件（`asr.provider: local`）：本地 vLLM 已部署 Qwen 语音模型，
-且其 OpenAI 兼容转写端点可达（默认 `http://127.0.0.1:8000/v1/audio/transcriptions`）。
+前置条件（`asr.provider: local`）：局域网/本地 vLLM 已部署 Qwen 语音模型（Qwen3-ASR），
+且其 OpenAI 兼容转写端点可达（默认 `http://192.168.0.190:8001/v1/audio/transcriptions`，见 config.example.yaml）。
 启动前用一条 curl 确认 ASR 在线：
 
 ```bash
@@ -65,6 +65,11 @@ curl -X POST localhost:5000/transcribe \
 | 502 | `asr_failed` | ASR 调用失败（不可达、非 200、响应无 text 等） |
 | 504 | `timeout` | 下载或 ASR 超过配置超时；失败时临时音频保留，message 中含路径 |
 
+> **vLLM Qwen3-ASR 端点已知行为**（2026-10-05 实测，详见 DECISIONS.md / PLAN 环境参考）：
+> ① 只接受 wav —— m4a/AAC 会在服务端挂起，asr.py 已自动用 ffmpeg 转码（需系统装 ffmpeg）；
+> ② 不要传 `language=zh`（`asr.language` 保持空）—— 端点会重复循环，模型自身能自动检测语言；
+> ③ 音频文件大小有上限（`audio_filesize_mb`）—— 16k wav 约 10.7MB/分钟，34 分钟视频（63.2MB）会 400，长音频支持见 T-016。
+
 转写成功后临时音频（`temp/{bvid}.m4a`）自动删除；失败时保留以便排查。
 
 ## 配置项（config.yaml）
@@ -93,8 +98,10 @@ curl -X POST localhost:5000/transcribe \
 | 404 `not_found` | 视频可能需登录态：把 B 站 Cookie 写进 `bilibili.cookie`；或视频已删除/不可见 |
 | 502 `fetch_failed` | B 站接口/CDN 异常，重试；持续失败时检查网络与 Cookie |
 | 502 `asr_failed` | ASR 服务未启动或 URL 错误；先 `curl` 直连 `asr.url` 验证 |
+| 502 `asr_failed` | ASR 服务未启动或 URL 错误；先 `curl` 直连 `asr.url` 验证。若 message 含 `Maximum file size exceeded`：音频太长，见端点行为③（可先换短视频验证链路） |
 | 504 `timeout` | 音频太长或 ASR 太慢：调大 `timeout.asr_s`；临时音频已保留（见 message 中路径） |
-| 转写文本为空/异常 | 检查模型是否为语音转写模型（ASR，不是 TTS）；`asr.language` 是否为 `zh` |
+| 转写文本重复循环 | 检查 `asr.language` 是否为空（传 `zh` 会触发端点循环，见端点行为②） |
+| 转写文本为空/异常 | 检查模型是否为语音转写模型（ASR，不是 TTS） |
 
 ## 开发与测试
 

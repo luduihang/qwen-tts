@@ -99,19 +99,24 @@
 
 ### Phase 5 — 真实 vLLM 接入（T-013 解 blocked 的前置代码变更）
 
-- [ ] T-014 — asr.py 接入真实 vLLM（temperature 透传 + m4a→wav 转码）
+- [x] T-014 — asr.py 接入真实 vLLM（temperature 透传 + m4a→wav 转码）
   - **Owns:** `asr.py`, `config.example.yaml`
   - **Contract:** 见契约总览（temperature 透传；非 wav 输入先 ffmpeg 转 16k mono wav）
   - 实测背景：192.168.0.190:8001 的 vLLM Qwen3-ASR-1.7B 端点对 m4a 输入挂起（>150s 无响应），wav 正常（213s 音频 8.9s 转完）；`language`/`temperature` 参数均被接受
   - **Done when:** `pytest tests/ -q` 全绿；真实端点用 m4a 输入（经转码）返回非空文本
-- [ ] T-015 — T-014 测试
+- [x] T-015 — T-014 测试
   - **Owns:** `tests/test_asr.py`
   - 覆盖：temperature 进 form、wav 原样发送（不转码）、m4a 转码后发送且临时 wav 清理、转码失败 → AsrError
   - **Done when:** `pytest tests/test_asr.py -q` 全绿
+- [ ] T-016 — 长音频支持（audio_filesize_mb 超限）
+  - **Owns:** `asr.py`（或新增 chunking 模块）+ 其测试
+  - **背景（2026-10-05 实测）**：34 分钟视频（BV1xx411c7mD，2055s）的 16k mono wav = 63.2MB → 端点 400 `Maximum file size exceeded (audio_filesize_mb=63.22)`；213s 的 6.8MB wav 正常。具体上限未知（6.8~63.2MB 之间），服务端参数 `audio_filesize_mb`（vLLM 启动侧可调，见 PLAN 环境参考）。
+  - **候选方案（新 session 拍板）**：a) 分段：ffmpeg 切 N 段（如 5 分钟/段）逐段转写后拼接 text（最稳，推荐）；b) 8k mono 转码（63.2→31.6MB，仍可能超限，不推荐单独用）；c) 服务端调大 `--max-audio-filesize-mb` 类参数（需动 vLLM 宿主机）
+  - **Done when:** 34 分钟视频（或 ≥20 分钟）真实 `POST /transcribe` 返回 200 且 text 非空完整；`pytest tests/ -q` 全绿
 
 ## In progress
 
-（无）
+- T-013 — 端到端验收（5/6 已核销）：✅ /health；✅ 213s 视频全链路（200+歌词 1898 字符+.txt+temp 清空）；❌ 34 分钟视频 ← 端点 400 audio_filesize_mb（63.2MB wav 超限）→ 依赖 T-016 或改用短中文视频（≤6 分钟）先完成"非空中文 text"验收。现场：`temp/BV1xx411c7mD.m4a`（17.6MB）已保留可复用；config.yaml 已指向真实 vLLM。
 
 ## Done
 
@@ -127,10 +132,12 @@
 - T-010 — 管线测试，52 条全绿（commit `2932790` + 后续补充）
 - T-011 — 超时→504 JSON + 每请求日志（手动黑洞 IP 实测 3.5s 返回 504；commit `e7770f1`）
 - T-012 — README（commit `c6f5964`）
+- T-014 — asr.py 接入真实 vLLM：temperature 透传 + m4a→16k wav 转码 + language 默认不发送（契约同步；commit `61192b6`）
+- T-015 — T-014 测试（58 条全绿；commit `3c7ce59`）
 
 ## Blocked
 
-- T-013 — 端到端验收：需本地 vLLM（Qwen 语音模型）在线。当前 127.0.0.1:8000 无服务（connection refused），HF 缓存无 ASR 模型（仅 sherpa-onnx paraformer，非 vLLM 模型）。已用 stub ASR 验证全链路（真实 B 站下载→转写→落盘→清理→remote 切换 Bearer），剩真实模型转写一项。待用户提供 vLLM 地址/启动命令。
+（无）
 
 ## Format conventions
 

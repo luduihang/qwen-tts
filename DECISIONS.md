@@ -35,6 +35,22 @@ approach.
 
 <!-- 新决策加在上方、模板下方。示例条目在首次真实决策时替换。 -->
 
+## 2026-10-05 — ASR 请求形状修正：m4a→wav 转码 + language 默认不发送 + temperature 透传
+
+**Status:** Accepted
+
+**Context:** 接入真实 vLLM 部署（192.168.0.190:8001，Qwen3-ASR-1.7B）时实测发现两个端点坑：① m4a/AAC 输入会在服务端挂起（>150s 无响应，重试稳定复现），同内容 wav 8.9s 完成；② 请求带 `language=zh` 时模型进入重复循环（145,659 字符循环副歌，两次复现），不传 language 则正常且模型能自动检测语言（英文歌出英文、中文内容出中文）。此外用户的原始调用脚本带 `temperature: 0.0`，契约原未覆盖。
+
+**Decision:** ① `asr.transcribe` 对非 wav 输入先用本地 ffmpeg 转 16k 单声道 wav（临时 `{音频名}.asr.wav`，发送后删除；ffmpeg 缺失/转码失败抛 AsrError）；② `language` 改为可选，默认空 = 不进 form（契约 + config.example + app.py DEFAULTS 同步）；③ `temperature` 可配置默认 0.0，透传给端点。ffmpeg 成为系统级依赖（已写入 README）。
+
+**Alternatives considered:**
+- **直传 m4a：** 端点挂起，不可用
+- **保持 language=zh 强制：** 循环输出，不可用；中文识别靠模型自动检测已验证可行
+
+**Tradeoffs:**
+- **Gain:** 真实端点 213s 视频 9.8s（含转码）出完整歌词；中文视频不传 language 也出中文；契约与实际部署行为一致
+- **Cost/Risk:** 多一个系统依赖 ffmpeg；转码临时文件占用短暂磁盘（已自动清理）；端点行为是 vLLM 部署侧的怪癖，换模型/升级版本可能变化（复现条件已记 PLAN 环境参考）
+
 ## 2026-10-03 — 超时单独成错码 timeout → 504 JSON
 
 **Status:** Accepted

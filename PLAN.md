@@ -72,13 +72,38 @@ Phase 4（串行）: T-011 健壮性, T-012 README, T-013 端到端验收
 - 本地 vLLM 服务的地址/端口是多少？验收时需要它在线（给我一个可用地址，或告诉我启动命令）
 - 目标视频匿名（无 Cookie）能拉到音频吗？若需要登录态，把 Cookie 写进 config.yaml 即可
 
+## 环境参考 — 真实 vLLM ASR 部署（2026-10-05，用户强调重要）
+
+- **端点**：`http://192.168.0.190:8001/v1/audio/transcriptions`（局域网；客户端机器 192.168.0.12；宿主机为 A100×2 Docker guest，80GB 显卡，主机用户 fuzadw）
+- **模型**：`/mnt/docker-data/hf-models/Qwen3-ASR-1.7B`，served-model-name `Qwen3-ASR-1.7B`（max_model_len 32768）
+- **宿主机启动脚本** `~/llm_home/llm_script/qwen3-asr-1.7b.sh`（带推测解码加速说明；先 unset 全部代理变量，conda 环境 `cu130`）：
+  ```bash
+  CUDA_VISIBLE_DEVICES=1 \
+  HF_HUB_OFFLINE=1 \
+  PYTORCH_ALLOC_CONF=expandable_segments:True \
+  vllm serve /mnt/docker-data/hf-models/Qwen3-ASR-1.7B \
+    --served-model-name Qwen3-ASR-1.7B \
+    --host 0.0.0.0 --port 8001 \
+    --dtype bfloat16 \
+    --max-model-len 32768 \
+    --gpu-memory-utilization 0.6 \
+    --max-num-seqs 16 \
+    --max-num-batched-tokens 32768 \
+    --enable-chunked-prefill
+  ```
+- **已知端点行为（实测，T-014 期间）**：
+  1. **m4a/AAC 输入挂起**（>150s 无响应；wav 正常）→ 客户端已用 ffmpeg 转码规避（asr.py）
+  2. **传 `language=zh` 会重复循环**（145K 字符循环副歌；不传则模型自动检测语言，中英文均正常）→ 客户端默认不发送 language
+  3. **音频文件大小上限**（参数 `audio_filesize_mb`）：6.8MB wav 可过，63.2MB wav → 400；具体上限未探明（6.8~63.2MB 之间）→ T-016 待办
+- **吞吐参考**（服务端日志）：生成约 49~67 tokens/s；213s 音频 8.9s 转完（1898 字符）
+
 ## References
 
 - `VISION.md` — 项目定位与领域词汇
 
 ## Current step
 
-v1 代码全部完成并合并到 main（T-001~T-012，52 条测试全绿）—— 仅剩 T-013 端到端验收（blocked：需本地 vLLM 在线，见 TASKS Blocked 节）
+v1 代码完成（T-001~T-012 + T-014/015 真实 vLLM 接入，58 条测试全绿，main @ e3e0279）。T-013 验收 5/6：剩"长视频/中文视频"一项——34 分钟视频撞端点 audio_filesize_mb 上限（63.2MB wav → 400）。下一步：短中文视频（≤6 分钟）完成 T-013 验收，再做 T-016（长音频分段）。
 
 ## Notes
 
