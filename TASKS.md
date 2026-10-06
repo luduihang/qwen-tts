@@ -27,7 +27,8 @@
 - 长音频切段约定（T-016）：端点文件大小上限约 30MB（实测 29MB wav 可过、30MB → 400 audio_filesize_mb）；`asr.transcribe` 对时长超过 `chunk_seconds`（默认 300s）的 wav 用 ffmpeg segment 流拷贝切段（临时文件 `{音频名}.chunk_NNN.wav`，发送后删除），逐段转写后按序拼接 text（无分隔符，中文场景）；切段失败抛 `AsrError`；wav 时长用标准库 wave 解析，解析失败（非标准 PCM）视为 0 = 不切段原样发送
 - `bili.get_audio(bvid, cfg, dest_path=None) -> (title, duration_s, local_path)`，失败抛 `BiliError(message, code)`，code ∈ {`invalid_bvid`, `not_found`, `fetch_failed`, `timeout`}；dest_path 空时默认 `temp_dir/{bvid}.m4a`，管线传 `temp_dir/{bvid}_{uuid8}.m4a`（并发请求隔离，T-017；.asr.wav/chunk 由其 stem 派生，自动隔离）
 - `asr.transcribe(audio_path, cfg) -> str`（中文文本），失败抛 `AsrError(message)`，可选属性 `code`（默认 `asr_failed`，超时时 `timeout`）
-- 错误 JSON：`{"error": {"code", "message"}}`；映射：`invalid_bvid`→400，`not_found`→404，`fetch_failed`/`asr_failed`→502，`timeout`→504，`internal`→500（路由 generic Exception 统一捕获，T-017）
+- 错误 JSON：`{"error": {"code", "message"}}`；映射：`invalid_bvid`/`invalid_output_dir`→400，`not_found`→404，`fetch_failed`/`asr_failed`→502，`timeout`→504，`internal`→500（路由 generic Exception 统一捕获，T-017）
+- 请求：`POST /transcribe {"bvid": "<BV号>", "output_dir": "<可选>"}`；`output_dir` 指定 .txt 保存目录（T-018）：省略/空 = 用 config 的 `output_dir`（保留启动自动创建兜底）；指定时必须是**服务所在机器**上已存在的目录（不自动创建），否则 400 `invalid_output_dir`；响应 `file_path` 为实际落盘路径
 - 转写文件名：`{bvid}_{标题清洗}.txt`（清洗：去除 `\/:*?"<>|`，空白压缩，截断 40 字符）
 
 ## Active
@@ -124,6 +125,12 @@
   - **候选方案**：a) temp 文件名加 per-request uuid 后缀（隔离，改动最小，推荐）；b) 同 bvid 处理中返回 409（需请求状态表，多用户场景再说）；另外路由对 generic Exception 统一 500 JSON
   - **Done when:** 并发重复请求不再 500（两请求均正常完成或 409）；路由任何错误都返回 JSON；`pytest tests/ -q` 全绿
 
+- [x] T-018 — /transcribe 支持可选 output_dir 请求参数（按请求指定 .txt 保存目录）
+  - **Owns:** `app.py` + tests + README
+  - 请求体 `{"bvid": "...", "output_dir": "/path"}`：output_dir 省略 = 用 config（现状）；指定时必须是服务所在机器上已存在的目录（不自动创建），不存在/不是目录/类型错 → 400 `invalid_output_dir`，不进下载/转写流程
+  - **Done when:** 自定义目录落盘 / 目录不存在 400 / 是文件 400 / 类型错 400 四条新测试全绿且既有测试全绿；README 同步；commit + push
+  - **验收（2026-10-05）：** 真实 e2e：output_dir=/tmp/t018_out → 200 且 file_path 正确落盘（10.5s）；不存在目录 → 400 JSON 立即返回；+4 测试（72 全绿）；顺手修 _error_response 空路径 bug（Path("").exists() 误拼"临时音频已保留: ."）
+
 ## In progress
 
 （无）
@@ -145,6 +152,7 @@
 - T-013 — 端到端验收 6/6（无代码改动；BV1dPaZ6qEhd 298s 中文视频 2122 字符收官，PLAN 验收全勾选）
 - T-016 — 长音频切段：asr.chunk_seconds 默认 300s，ffmpeg segment 流拷贝，逐段拼接 + finally 统一清理（+7 测试，65 全绿；34 分钟视频 ×2 真实成功；上限探明约 30MB 落文档）
 - T-017 — 并发 500 修复：uuid temp 命名 + 路由 500 JSON（+3 测试，68 全绿；真实并发 ×2 均 200）
+- T-018 — output_dir 请求参数：按请求指定 .txt 保存目录（默认 config，不存在 400 invalid_output_dir；+4 测试，72 全绿；真实 e2e 落盘验证）
 - T-014 — asr.py 接入真实 vLLM：temperature 透传 + m4a→16k wav 转码 + language 默认不发送（契约同步；commit `61192b6`）
 - T-015 — T-014 测试（58 条全绿；commit `3c7ce59`）
 

@@ -85,6 +85,7 @@ def ensure_dirs(cfg):
 # 错误码 → HTTP 状态映射（契约见 TASKS.md）
 ERROR_STATUS = {
     "invalid_bvid": 400,
+    "invalid_output_dir": 400,
     "not_found": 404,
     "fetch_failed": 502,
     "asr_failed": 502,
@@ -109,9 +110,10 @@ def transcription_file_name(bvid, title):
 def _error_response(code, exc, cfg, bvid, started, audio_path):
     """按契约返回错误 JSON；失败时保留临时音频并在 message 中给出实际路径。"""
     message = str(exc)
-    p = Path(audio_path)
-    if p.exists():
-        message += f"（临时音频已保留: {p}）"
+    if audio_path:
+        p = Path(audio_path)
+        if p.exists():
+            message += f"（临时音频已保留: {p}）"
     print(
         f"[transcribe] bvid={bvid} error={code} elapsed={time.time() - started:.1f}s msg={message}",
         flush=True,
@@ -133,6 +135,24 @@ def create_app(cfg):
         bvid = body.get("bvid") or ""
         started = time.time()
         print(f"[transcribe] start bvid={bvid}", flush=True)
+        # 可选：调用方指定 .txt 保存目录（T-018）——服务所在机器上已存在的目录，
+        # 不自动创建；未指定时用 config 的 output_dir
+        out_dir_path = None
+        raw_out = body.get("output_dir")
+        if raw_out is not None:
+            if not isinstance(raw_out, str) or not raw_out.strip():
+                return _error_response(
+                    "invalid_output_dir", ValueError("output_dir 必须是非空字符串"),
+                    cfg, bvid, started, "",
+                )
+            candidate = Path(raw_out).expanduser()
+            if not candidate.is_dir():
+                return _error_response(
+                    "invalid_output_dir",
+                    ValueError(f"output_dir 不存在或不是目录: {raw_out}"),
+                    cfg, bvid, started, "",
+                )
+            out_dir_path = candidate
         # per-request 唯一临时文件名：同 BV 并发转写互不抢文件（T-017）；
         # .asr.wav / .chunk_*.wav 由该 stem 派生，自动隔离
         session = uuid.uuid4().hex[:8]
@@ -140,8 +160,10 @@ def create_app(cfg):
         try:
             title, duration_s, audio_path = get_audio(bvid, cfg, dest_path=audio_path)
             text = transcribe(audio_path, cfg)
-            out_path = Path(cfg["output_dir"]) / transcription_file_name(bvid, title)
-            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_base = out_dir_path if out_dir_path is not None else Path(cfg["output_dir"])
+            out_path = out_base / transcription_file_name(bvid, title)
+            if out_dir_path is None:
+                out_path.parent.mkdir(parents=True, exist_ok=True)  # 默认目录保留自动创建兜底
             out_path.write_text(text, encoding="utf-8")
             os.remove(audio_path)  # 成功后清理临时音频
         except BiliError as e:

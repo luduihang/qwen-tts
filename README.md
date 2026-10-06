@@ -37,6 +37,14 @@ curl -X POST localhost:5000/transcribe \
   -d '{"bvid":"BV1GJ411x7h7"}'
 ```
 
+可选 `output_dir` 指定 .txt 保存目录（服务所在机器上已存在的目录，不自动创建；不指定则用 config 的 `output_dir`）：
+
+```bash
+curl -X POST localhost:5000/transcribe \
+  -H 'Content-Type: application/json' \
+  -d '{"bvid":"BV1GJ411x7h7", "output_dir":"/home/me/subtitles"}'
+```
+
 成功（200）：
 
 ```json
@@ -60,6 +68,7 @@ curl -X POST localhost:5000/transcribe \
 | HTTP | code | 含义 |
 |---|---|---|
 | 400 | `invalid_bvid` | BV 号格式非法 / 请求体缺失 |
+| 400 | `invalid_output_dir` | 请求指定的 `output_dir` 不存在、不是目录或类型错（不自动创建目录） |
 | 404 | `not_found` | 视频不存在（匿名不可见的按不存在处理，可配 Cookie） |
 | 502 | `fetch_failed` | B 站接口 / 音频下载失败 |
 | 502 | `asr_failed` | ASR 调用失败（不可达、非 200、响应无 text 等） |

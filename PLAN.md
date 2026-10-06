@@ -103,7 +103,7 @@ Phase 4（串行）: T-011 健壮性, T-012 README, T-013 端到端验收
 
 ## Current step
 
-**v1 全部收官**（2026-10-05）：T-013 验收 6/6 → T-016 长音频切段（34 分钟视频 ×2 真实成功，68 条测试全绿）→ T-017 并发 500 修复（uuid temp 命名 + 路由 500 JSON，真实并发 ×2 均 200）。无剩余任务；如继续，按 Not in scope 里的方向（批量/队列/多用户 409 等）开新 feature 走 plan-then-implement。
+**v1 全部收官**（2026-10-05）：T-013 验收 6/6 → T-016 长音频切段（34 分钟视频 ×2 真实成功）→ T-017 并发 500 修复（uuid temp 命名 + 500 JSON）→ T-018 `output_dir` 请求参数（按请求指定 .txt 保存目录，默认 config，目录不存在 400），72 条测试全绿。无剩余任务；如继续，按 Not in scope 里的方向（批量/队列/多用户 409 等）开新 feature 走 plan-then-implement。
 
 ## Notes
 

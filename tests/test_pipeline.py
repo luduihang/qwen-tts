@@ -237,3 +237,58 @@ def test_concurrent_same_bvid_both_ok(tmp_path):
     assert results == [200, 200]
     assert len(set(dests)) == 2  # 两请求用了不同的临时文件名
     assert not list(Path(cfg["temp_dir"]).glob("*.m4a"))  # 各自清理，无残留
+
+
+# ---------- T-018 output_dir 请求参数 ----------
+
+
+def test_output_dir_param_uses_custom_dir(tmp_path):
+    """指定已存在的 output_dir：.txt 落盘到该目录（T-018）。"""
+    cfg = make_cfg(tmp_path)
+    custom = Path(tmp_path) / "my_subs"
+    custom.mkdir()
+    with patch("app.get_audio", side_effect=fake_get_audio_ok), patch(
+        "app.transcribe", return_value="文本"
+    ):
+        client = make_client(cfg)
+        r = client.post("/transcribe", json={"bvid": BVID, "output_dir": str(custom)})
+    assert r.status_code == 200
+    out = Path(r.get_json()["file_path"])
+    assert out.parent == custom
+    assert out.name == f"{BVID}_T.txt"
+    assert out.read_text(encoding="utf-8") == "文本"
+
+
+def test_output_dir_missing_400_and_pipeline_not_started(tmp_path):
+    """output_dir 不存在 → 400 invalid_output_dir，不进下载/转写（T-018）。"""
+    cfg = make_cfg(tmp_path)
+    with patch("app.get_audio", side_effect=fake_get_audio_ok) as mock_ga:
+        client = make_client(cfg)
+        r = client.post(
+            "/transcribe", json={"bvid": BVID, "output_dir": str(Path(tmp_path) / "nope")}
+        )
+    assert r.status_code == 400
+    assert r.get_json()["error"]["code"] == "invalid_output_dir"
+    assert "临时音频" not in r.get_json()["error"]["message"]  # 未进管线，不应提临时文件
+    mock_ga.assert_not_called()  # 校验在下载之前
+
+
+def test_output_dir_is_file_400(tmp_path):
+    cfg = make_cfg(tmp_path)
+    a_file = Path(cfg["temp_dir"]) / "x.txt"
+    a_file.parent.mkdir(parents=True, exist_ok=True)
+    a_file.write_bytes(b"not a dir")
+    with patch("app.get_audio", side_effect=fake_get_audio_ok):
+        client = make_client(cfg)
+        r = client.post("/transcribe", json={"bvid": BVID, "output_dir": str(a_file)})
+    assert r.status_code == 400
+    assert r.get_json()["error"]["code"] == "invalid_output_dir"
+
+
+def test_output_dir_wrong_type_400(tmp_path):
+    cfg = make_cfg(tmp_path)
+    with patch("app.get_audio", side_effect=fake_get_audio_ok):
+        client = make_client(cfg)
+        r = client.post("/transcribe", json={"bvid": BVID, "output_dir": 123})
+    assert r.status_code == 400
+    assert r.get_json()["error"]["code"] == "invalid_output_dir"
