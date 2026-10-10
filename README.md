@@ -45,6 +45,14 @@ curl -X POST localhost:5000/transcribe \
   -d '{"bvid":"BV1GJ411x7h7", "output_dir":"/home/me/subtitles"}'
 ```
 
+可选 `prompt` 指定领域提示词/术语表（T-019），引导 ASR 模型对同音词优先选领域规范术语（用法与注意事项见下方「领域提示词」节）：
+
+```bash
+curl -X POST localhost:5000/transcribe \
+  -H 'Content-Type: application/json' \
+  -d '{"bvid":"BV1dPaZ6qEhd", "prompt":"这是一段命理学讲座的转写任务。同音词请优先采用命理学规范术语：八字、四柱、天干、地支、日主、大运、流年、喜用神、叫应、入墓。"}'
+```
+
 成功（200）：
 
 ```json
@@ -69,6 +77,7 @@ curl -X POST localhost:5000/transcribe \
 |---|---|---|
 | 400 | `invalid_bvid` | BV 号格式非法 / 请求体缺失 |
 | 400 | `invalid_output_dir` | 请求指定的 `output_dir` 不存在、不是目录或类型错（不自动创建目录） |
+| 400 | `invalid_prompt` | `prompt` 不是字符串（T-019；省略/`null`/空串 = 无提示词，不报错） |
 | 404 | `not_found` | 视频不存在（匿名不可见的按不存在处理，可配 Cookie） |
 | 502 | `fetch_failed` | B 站接口 / 音频下载失败 |
 | 502 | `asr_failed` | ASR 调用失败（不可达、非 200、响应无 text 等） |
@@ -83,10 +92,15 @@ curl -X POST localhost:5000/transcribe \
 
 ## 领域提示词：给转写注入领域术语（进阶）
 
-转写领域音频（如命理学讲座）时，可以给 vLLM 转写端点传一个含术语表的 `prompt`，引导模型对同音词优先选领域规范术语。2026-10-11 实测验证（Qwen3-ASR-1.7B + vLLM 0.30.0，证据在 `spike/`）：
+转写领域音频（如命理学讲座）时，可以传一个含术语表的 `prompt`，引导模型对同音词优先选领域规范术语。两种入口：直接调 vLLM 端点，或经本仓库 `/transcribe` 服务（T-019，按请求透传，长音频时每个段都带）。2026-10-11 实测验证（Qwen3-ASR-1.7B + vLLM 0.30.0，证据在 `spike/`）：
 
 ```bash
-# 直连 vLLM 端点（与 config.yaml 的 asr.url 同 URL）
+# 入口一：本仓库 /transcribe 服务（推荐；下载、切段、落盘全自动）
+curl -X POST localhost:5000/transcribe \
+  -H 'Content-Type: application/json' \
+  -d '{"bvid":"BV1dPaZ6qEhd", "prompt":"这是一段命理学讲座的转写任务。同音词请优先采用命理学规范术语：八字、四柱、叫应、入墓。"}'
+
+# 入口二：直连 vLLM 端点（与 config.yaml 的 asr.url 同 URL，只转写本地文件）
 curl -X POST http://192.168.0.190:8001/v1/audio/transcriptions \
   -F file=@lecture.wav \
   -F model=Qwen3-ASR-1.7B \
@@ -105,7 +119,7 @@ curl -X POST http://192.168.0.190:8001/v1/audio/transcriptions \
 
 1. **术语表要包含音频里实际会说的词**——提示词是真实的同音选择先验，表里没有的词可能被带偏（实测：表里无"叫应"时输出 `叫硬受伤`，加入后恢复 `叫应受伤`）。
 2. **措辞克制**——只给术语表，少加指令性文字（提示词还会影响输出风格，如实测提示词版本会去掉标点）。
-3. 本仓库 `/transcribe` 服务当前**不透传** `prompt`（契约未变，`asr.py` 请求形状不变）；需要时可在契约加可选 `prompt` 请求参数透传。
+3. 本仓库 `/transcribe` 服务自 T-019 起支持可选 `prompt` 请求参数：省略/`null`/空串 = 无提示词（对不支持该字段的端点安全）；非空字符串 = 透传给 ASR 端点（form 字段 `prompt`，长音频时每个段都带）；非字符串类型 → 400 `invalid_prompt`。
 
 ## 配置项（config.yaml）
 

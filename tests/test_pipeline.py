@@ -292,3 +292,60 @@ def test_output_dir_wrong_type_400(tmp_path):
         r = client.post("/transcribe", json={"bvid": BVID, "output_dir": 123})
     assert r.status_code == 400
     assert r.get_json()["error"]["code"] == "invalid_output_dir"
+
+
+# ---------- T-019 prompt 请求参数 ----------
+
+def test_prompt_passed_to_transcribe(tmp_path):
+    """非空 prompt 透传给 asr.transcribe（T-019）。"""
+    cfg = make_cfg(tmp_path)
+    with patch(
+        "app.get_audio",
+        side_effect=lambda bvid, cfg_, dest_path=None: fake_get_audio_ok(bvid, cfg_, dest_path),
+    ), patch("app.transcribe", return_value="转写文本") as m_transcribe:
+        client = make_client(cfg)
+        r = client.post("/transcribe", json={"bvid": BVID, "prompt": "命理学：八字、叫应"})
+
+    assert r.status_code == 200
+    assert m_transcribe.call_args.kwargs.get("prompt") == "命理学：八字、叫应"
+
+
+def test_prompt_omitted_passes_none(tmp_path):
+    """省略 prompt → transcribe 收到 prompt=None（请求形状不变，T-019）。"""
+    cfg = make_cfg(tmp_path)
+    with patch(
+        "app.get_audio",
+        side_effect=lambda bvid, cfg_, dest_path=None: fake_get_audio_ok(bvid, cfg_, dest_path),
+    ), patch("app.transcribe", return_value="转写文本") as m_transcribe:
+        client = make_client(cfg)
+        r = client.post("/transcribe", json={"bvid": BVID})
+
+    assert r.status_code == 200
+    assert m_transcribe.call_args.kwargs.get("prompt") is None
+
+
+def test_prompt_wrong_type_400_and_pipeline_not_started(tmp_path):
+    """prompt 非字符串类型 → 400 invalid_prompt，不进下载/转写（T-019）。"""
+    cfg = make_cfg(tmp_path)
+    with patch("app.get_audio") as m_get, patch("app.transcribe") as m_tr:
+        client = make_client(cfg)
+        for bad in (123, True, ["八字"], {"x": 1}):
+            r = client.post("/transcribe", json={"bvid": BVID, "prompt": bad})
+            assert r.status_code == 400
+            assert r.get_json()["error"]["code"] == "invalid_prompt"
+    m_get.assert_not_called()
+    m_tr.assert_not_called()
+
+
+def test_prompt_empty_string_is_noop(tmp_path):
+    """prompt = 空串 = 等同未提供（路由放行，asr 不进 form）（T-019）。"""
+    cfg = make_cfg(tmp_path)
+    with patch(
+        "app.get_audio",
+        side_effect=lambda bvid, cfg_, dest_path=None: fake_get_audio_ok(bvid, cfg_, dest_path),
+    ), patch("app.transcribe", return_value="转写文本") as m_transcribe:
+        client = make_client(cfg)
+        r = client.post("/transcribe", json={"bvid": BVID, "prompt": ""})
+
+    assert r.status_code == 200
+    assert m_transcribe.call_args.kwargs.get("prompt") == ""

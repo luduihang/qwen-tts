@@ -388,3 +388,47 @@ def test_m4a_long_path_convert_then_chunk(mock_post, tmp_path):
     ]
     assert not list(tmp_path.glob("*.chunk_*.wav"))
     assert not (tmp_path / "BV1xx411c7mD.asr.wav").exists()
+
+
+# ---------- T-019 prompt（领域提示词/术语表） ----------
+
+@patch("asr.requests.post")
+def test_prompt_sent_as_form_field(mock_post, tmp_path):
+    """非空 prompt = 以表单字段 prompt 随请求发送（T-019）。"""
+    mock, cap = capture_post()
+    mock_post.side_effect = mock.side_effect
+
+    audio = write_audio(tmp_path)  # .wav：不触发转码
+    prompt = "这是一段命理学讲座。同音词请优先采用命理学规范术语：八字、四柱、叫应。"
+    transcribe(str(audio), make_cfg(), prompt=prompt)
+
+    assert cap["data"]["prompt"] == prompt
+
+
+@patch("asr.requests.post")
+def test_prompt_omitted_or_blank_not_in_form(mock_post, tmp_path):
+    """省略 / None / 空串 / 纯空白 = 不进 form（T-019，对不支持该字段的端点安全）。"""
+    mock, cap = capture_post()
+    mock_post.side_effect = mock.side_effect
+
+    audio = write_audio(tmp_path)
+    transcribe(str(audio), make_cfg())
+    assert "prompt" not in cap["data"]
+    transcribe(str(audio), make_cfg(), prompt=None)
+    assert "prompt" not in cap["data"]
+    transcribe(str(audio), make_cfg(), prompt="   ")
+    assert "prompt" not in cap["data"]
+
+
+@patch("asr.requests.post")
+def test_chunked_audio_every_chunk_gets_prompt(mock_post, tmp_path):
+    """长音频切段 + prompt：每个段的请求都带同一 prompt（T-019）。"""
+    mock, calls = capture_posts([ok_resp({"text": "甲"}), ok_resp({"text": "乙"})])
+    mock_post.side_effect = mock.side_effect
+
+    audio = write_audio(tmp_path, content=real_wav_bytes(seconds=3))  # 3s，chunk 2s → 2 段
+    result = transcribe(str(audio), make_cfg_chunk(chunk_seconds=2), prompt="术语表")
+
+    assert result == "甲乙"
+    assert len(calls) == 2
+    assert all(c["data"].get("prompt") == "术语表" for c in calls)

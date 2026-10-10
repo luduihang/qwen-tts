@@ -1,7 +1,7 @@
 """ASR 客户端：音频文件 → 文本。
 
 契约（见 TASKS.md 契约总览）：
-    transcribe(audio_path, cfg) -> str
+    transcribe(audio_path, cfg, prompt=None) -> str
     失败抛 AsrError(message)
 
 provider 切换点（config.yaml 的 asr.provider）：
@@ -17,6 +17,12 @@ audio_filesize_mb，上限约 30MB）。时长超过 asr.chunk_seconds（默认 
 省略/0 同默认）的 wav 先用 ffmpeg 切段（segment 流拷贝，{音频名}.chunk_NNN.wav，
 发送后删除），逐段转写后按序拼接 text。默认每段 300s，16k 单声道下 ≈ 9.6MB，
 离上限余量充足。
+
+领域提示词约定（T-019）：transcribe 第三个可选参数 prompt（领域提示词/术语表，
+请求参数而非配置项）：非空白字符串 = 以表单字段 prompt 随每个请求发送（长音频
+时每个段都带）；None/空串/纯空白 = 不进 form（现状不变，对不支持该字段的端点安全）。
+端点行为已实测（2026-10-11，Qwen3-ASR vLLM 0.30.0）：prompt 字段真实影响同音词
+选择；hot_words 被静默忽略，不透传。
 """
 import shutil
 import subprocess
@@ -131,8 +137,12 @@ def _post_audio(path: Path, url: str, headers: dict, form: dict, timeout: int, l
     return text
 
 
-def transcribe(audio_path, cfg):
+def transcribe(audio_path, cfg, prompt=None):
     """音频文件 → 文本。
+
+    prompt（领域提示词/术语表，T-019）：非空白字符串 = 以表单字段 prompt 随每个
+    请求发送（长音频时每个段都带）；None/空串/纯空白 = 不发送。非字符串静默忽略
+    （类型校验由路由层负责，400 invalid_prompt）。
 
     返回 ASR 响应中的 text 字段（长音频为逐段按序拼接）；
     网络/HTTP/解析/转码/切段异常统一抛 AsrError。
@@ -161,6 +171,9 @@ def transcribe(audio_path, cfg):
     # language 为空 = 不发送（部分端点传了会行为异常，模型自身能自动检测语言）
     if a.get("language"):
         form["language"] = a["language"]
+    # prompt 非空白字符串 = 进 form（T-019；Qwen3-ASR vLLM 端点该字段引导同音词选择）
+    if isinstance(prompt, str) and prompt.strip():
+        form["prompt"] = prompt
 
     # 端点只接受 wav：非 wav 输入先转码（临时文件，发送后删除）
     converted = None

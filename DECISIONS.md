@@ -34,6 +34,24 @@ approach.
 ---
 
 <!-- 新决策加在上方、模板下方。示例条目在首次真实决策时替换。 -->
+## 2026-10-11 — T-019 领域提示词透传：/transcribe 加可选 `prompt` 请求参数（空 = no-op，切段每段都带）
+
+**Status:** Accepted
+
+**Context:** Spike（证据 `spike/`）确认 Qwen3-ASR vLLM 端点的 `prompt` 字段真实影响同音词选择，但用户需要多人可用：转写垂直领域（如命理学）音频时，经服务 /transcribe 也要能按请求注入领域术语，而不只是直连端点。
+
+**Decision:** `/transcribe` 加可选 `prompt` 请求参数（契约：TASKS.md T-019）：省略/`null`/空串 = 无提示词（请求 form 形状不变，对不支持该字段的端点安全）；非空字符串 = 以 form 字段 `prompt` 随每个请求发送（长音频时每个段都带同一 prompt）；非字符串类型 → 400 `invalid_prompt`（不进下载/转写）。`asr.transcribe(audio_path, cfg, prompt=None)`：asr 层对非字符串静默忽略（类型校验在路由层）。
+
+**Alternatives considered:**
+- **config.yaml 加 asr.prompt：** 拒绝——prompt 是情境性的（不同音频不同术语），应是请求参数而非全局配置；服务供多人调用
+- **空串 → 400（对齐 output_dir 语义）：** 拒绝——对"提示"字段，空 = 无提示是自然 no-op，对调用方更友好；只有类型错才 400
+- **`hot_words` 透传：** 拒绝——端点实测静默忽略，零效果（2026-10-11 spike）
+
+**Tradeoffs:**
+- **Gain:** 调用方零改造即可注入领域术语（JSON 加一个字段）；不传参数时与旧请求 100% 兼容
+- **Cost/Risk:** 不支持 `prompt` 字段的端点可能拒绝未知字段（当前 Qwen3-ASR vLLM 已验证接受；remote provider 需先验证）；prompt 质量决定效果——术语表必须含实际所言之词，否则带偏（见 README 领域提示词节）
+
+
 
 ## 2026-10-11 — 领域提示词注入：transcriptions `prompt` 字段为推荐路径（spike 实测）
 

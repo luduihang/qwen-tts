@@ -86,6 +86,7 @@ def ensure_dirs(cfg):
 ERROR_STATUS = {
     "invalid_bvid": 400,
     "invalid_output_dir": 400,
+    "invalid_prompt": 400,
     "not_found": 404,
     "fetch_failed": 502,
     "asr_failed": 502,
@@ -153,13 +154,22 @@ def create_app(cfg):
                     cfg, bvid, started, "",
                 )
             out_dir_path = candidate
+        # 可选：领域提示词/术语表（T-019）——透传给 ASR 端点 prompt 字段，
+        # 引导垂直领域（如命理学）同音词选择；省略/None/空串 = 无提示词；
+        # 非字符串类型 → 400 invalid_prompt（不进下载/转写）
+        prompt = body.get("prompt")
+        if prompt is not None and not isinstance(prompt, str):
+            return _error_response(
+                "invalid_prompt", ValueError("prompt 必须是字符串（领域提示词/术语表）"),
+                cfg, bvid, started, "",
+            )
         # per-request 唯一临时文件名：同 BV 并发转写互不抢文件（T-017）；
         # .asr.wav / .chunk_*.wav 由该 stem 派生，自动隔离
         session = uuid.uuid4().hex[:8]
         audio_path = str(Path(cfg["temp_dir"]) / f"{bvid}_{session}.m4a")
         try:
             title, duration_s, audio_path = get_audio(bvid, cfg, dest_path=audio_path)
-            text = transcribe(audio_path, cfg)
+            text = transcribe(audio_path, cfg, prompt=prompt)
             out_base = out_dir_path if out_dir_path is not None else Path(cfg["output_dir"])
             out_path = out_base / transcription_file_name(bvid, title)
             if out_dir_path is None:

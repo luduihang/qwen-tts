@@ -11,8 +11,17 @@
 
 
 <!-- session-in-progress:start=2026-10-10T15:56:24.065Z -->
-## 2026-10-11 00:11 — I've identified the root cause: the harness is continuously overwriting the in-p... _(in progress)_
-I've identified the root cause: the harness is continuously overwriting the in-progress block with my latest replies, so my 00:12 summary was lost before commit. The README/PLAN/DECISIONS/spike evidence are safely stored in the repository. I'll now add the spike conclusion as a **permanent entry** in PROGRESS.md (outside the in-progress block, which the harness manages):
+## 2026-10-11 00:12 — 完成。Prompt 使用方法已全部同步到 GitHub（`luduihang/qwen-tts` main，`d4ea476..c17ee33`，走 7897 ... _(in progress)_
+完成。Prompt 使用方法已全部同步到 GitHub（`luduihang/qwen-tts` main，`d4ea476..c17ee33`，走 7897 代理推送）：
+
+**入库内容（2 个 commit）**
+
+| 文件 | 内容 |
+|---|---|
+| `README.md` | 新章节「**领域提示词：给转写注入领域术语（进阶）**」——curl 用法（`prompt` 表单字段）、三种方法实测结论表、三条注意事项（术语表须含实际所言之词 / 措辞克制 / 本服务暂不透传） |
+| `PLAN.md` | 「环境参考 → 已知端点行为」追加第 4 条：`prompt` 字段有效、`hot_words` 被忽略（含 vLLM 版本号与复现条件） |
+| `DECISIONS.md` | 新 ADR 条目（2026-10-11）：为什么选 `prompt` 字段为推荐路径，备选方案与取舍 |
+| `spike/` | 完整证据：`probe2.py` 探测脚本 + 6 份请求 JSON（`requests/`）+ 16 份原始响应（`results/`），可复跑验证 ...
 <!-- end-session-in-progress -->
 ## 2026-10-11 00:15 — ✅ Spike 完成：提示词能影响 Qwen3-ASR 转写；Prompt 用法文档已同步 GitHub（`d4ea476..368dd5d`，7897 代理）
 **用户目标**：转写命理学音频时注入领域术语提示词，提高同音术语准确性。15s 命理学讲座片段（temp/BV1GucuzwEKX 截取）× 10 次请求全部 200，证据在 `spike/`（requests/ 与 results/ 分离）。
@@ -26,6 +35,10 @@ I've identified the root cause: the harness is continuously overwriting the in-p
 
 **文档落库（`368dd5d` 已 push）**：README 新增「领域提示词：给转写注入领域术语（进阶）」章节（curl 用法 + 三方法实测结论表 + 三注意事项）、PLAN 环境参考第 4 条、DECISIONS 新条目（2026-10-11）、`spike/` 证据目录（probe 脚本 + 请求/响应 JSON）一并入库。本仓库 /transcribe 契约未变（不透传 prompt）；需要时加可选 `prompt` 请求参数（未实施，等用户确认）。
 
+## 2026-10-11 00:30 — ✅ T-019 完成：/transcribe 支持可选 `prompt` 请求参数（领域提示词透传，供多人调用）
+用户需求：转写时注入领域提示词不只给自己用——其他人调 /transcribe 也要能带。契约先行（TASKS 契约总览：领域提示词约定 + 请求行 + `invalid_prompt`→400 + `asr.transcribe(audio_path, cfg, prompt=None)` 签名），实现：app.py 路由校验（非字符串 → 400 `invalid_prompt`，不进下载/转写；省略/`null`/空串 = 无提示词）+ asr.py form 加 `prompt` 字段（非空白字符串才进 form，长音频每个段都带）。
+**验收**：79 条测试全绿（72 既有 + 7 新）；真实 e2e：BV1dPaZ6qEhd（298s 中文军事评论）+ 军事术语表 → 200（15.3s，2125 字符，.txt 落盘）；prompt=123 → 400 秒回；temp 无残留。README（使用/错误表/领域提示词节改双入口）、DECISIONS（T-019 条目：空串 no-op 而非 400 的取舍）、PLAN 同步。
+<!-- end-session-in-progress -->
 ## 2026-10-10 21:48 — ## 文档侦察结论（Qwen3-ASR-1.7B 官方模型卡，57KB 全文已读）
 
 **先回答你最担心的：启动参数不用改，按原脚本启动即可。** prompt...

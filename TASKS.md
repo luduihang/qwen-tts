@@ -25,10 +25,11 @@
   ```
 - 转码约定：ASR 端点（vLLM Qwen3-ASR）只接受 wav；`asr.transcribe` 对非 wav 输入（如 m4a/AAC）先用本地 ffmpeg 转 16k 单声道 wav（临时文件 `{音频名}.asr.wav`，发送后删除），ffmpeg 缺失/转码失败抛 `AsrError`。`language` 为空时不进 form（端点兼容性问题见配置注释）
 - 长音频切段约定（T-016）：端点文件大小上限约 30MB（实测 29MB wav 可过、30MB → 400 audio_filesize_mb）；`asr.transcribe` 对时长超过 `chunk_seconds`（默认 300s）的 wav 用 ffmpeg segment 流拷贝切段（临时文件 `{音频名}.chunk_NNN.wav`，发送后删除），逐段转写后按序拼接 text（无分隔符，中文场景）；切段失败抛 `AsrError`；wav 时长用标准库 wave 解析，解析失败（非标准 PCM）视为 0 = 不切段原样发送
+- 领域提示词约定（T-019）：`prompt` 是**请求参数**（不是配置项）；非空白字符串 = 以表单字段 `prompt` 随每个请求（含长音频的每个段）发给端点；None/空串/纯空白 = 不进 form（现状不变，对不支持该字段的端点安全）。端点行为已实测（2026-10-11，Qwen3-ASR vLLM 0.30.0）：`prompt` 字段有效（引导同音词选择）、`hot_words` 被静默忽略——只透传 `prompt`
 - `bili.get_audio(bvid, cfg, dest_path=None) -> (title, duration_s, local_path)`，失败抛 `BiliError(message, code)`，code ∈ {`invalid_bvid`, `not_found`, `fetch_failed`, `timeout`}；dest_path 空时默认 `temp_dir/{bvid}.m4a`，管线传 `temp_dir/{bvid}_{uuid8}.m4a`（并发请求隔离，T-017；.asr.wav/chunk 由其 stem 派生，自动隔离）
-- `asr.transcribe(audio_path, cfg) -> str`（中文文本），失败抛 `AsrError(message)`，可选属性 `code`（默认 `asr_failed`，超时时 `timeout`）
-- 错误 JSON：`{"error": {"code", "message"}}`；映射：`invalid_bvid`/`invalid_output_dir`→400，`not_found`→404，`fetch_failed`/`asr_failed`→502，`timeout`→504，`internal`→500（路由 generic Exception 统一捕获，T-017）
-- 请求：`POST /transcribe {"bvid": "<BV号>", "output_dir": "<可选>"}`；`output_dir` 指定 .txt 保存目录（T-018）：省略/空 = 用 config 的 `output_dir`（保留启动自动创建兜底）；指定时必须是**服务所在机器**上已存在的目录（不自动创建），否则 400 `invalid_output_dir`；响应 `file_path` 为实际落盘路径
+- `asr.transcribe(audio_path, cfg, prompt=None) -> str`（中文文本），失败抛 `AsrError(message)`，可选属性 `code`（默认 `asr_failed`，超时时 `timeout`）；`prompt` 非空白字符串时进 form（T-019），非字符串静默忽略（类型校验在路由层）
+- 错误 JSON：`{"error": {"code", "message"}}`；映射：`invalid_bvid`/`invalid_output_dir`/`invalid_prompt`→400，`not_found`→404，`fetch_failed`/`asr_failed`→502，`timeout`→504，`internal`→500（路由 generic Exception 统一捕获，T-017）
+- 请求：`POST /transcribe {"bvid": "<BV号>", "output_dir": "<可选>", "prompt": "<可选>"}`；`output_dir` 指定 .txt 保存目录（T-018）：省略/空 = 用 config 的 `output_dir`（保留启动自动创建兜底）；指定时必须是**服务所在机器**上已存在的目录（不自动创建），否则 400 `invalid_output_dir`；响应 `file_path` 为实际落盘路径 `prompt` 领域提示词/术语表（T-019）：省略/`null`/空串 = 无提示词；非空字符串 = 透传给 ASR 端点（form 字段 `prompt`）；非字符串类型 → 400 `invalid_prompt`（不进下载/转写）
 - 转写文件名：`{bvid}_{标题清洗}.txt`（清洗：去除 `\/:*?"<>|`，空白压缩，截断 40 字符）
 
 ## Active
@@ -130,6 +131,16 @@
   - 请求体 `{"bvid": "...", "output_dir": "/path"}`：output_dir 省略 = 用 config（现状）；指定时必须是服务所在机器上已存在的目录（不自动创建），不存在/不是目录/类型错 → 400 `invalid_output_dir`，不进下载/转写流程
   - **Done when:** 自定义目录落盘 / 目录不存在 400 / 是文件 400 / 类型错 400 四条新测试全绿且既有测试全绿；README 同步；commit + push
   - **验收（2026-10-05）：** 真实 e2e：output_dir=/tmp/t018_out → 200 且 file_path 正确落盘（10.5s）；不存在目录 → 400 JSON 立即返回；+4 测试（72 全绿）；顺手修 _error_response 空路径 bug（Path("").exists() 误拼"临时音频已保留: ."）
+
+### Phase 6 — 领域提示词（v1.1）
+
+- [x] T-019 — /transcribe 支持可选 `prompt` 请求参数并透传给 ASR 端点（领域术语/提示词注入）
+  - **Owns:** `app.py`, `asr.py` + tests + README + TASKS 契约总览
+  - **Contract:** 见契约总览（领域提示词约定 + 请求行 + 错误映射 `invalid_prompt`→400）
+  - 请求体 `{"bvid": "...", "prompt": "<领域提示词/术语表>"}`：省略/`null`/空串 = 无提示词（现状不变，对不支持该字段的端点安全）；非空字符串 = 以表单字段 `prompt` 随每个请求发送（长音频时每个段都带）；非字符串类型 → 400 `invalid_prompt`，不进下载/转写
+  - 背景：2026-10-11 spike 实测（证据 `spike/`）：Qwen3-ASR vLLM 0.30.0 的 `prompt` 字段真实影响同音词选择（可复现），`hot_words` 被静默忽略；用户需求 = 转写命理学等垂直领域音频时按情境注入术语表，供多人调用
+  - **Done when:** 新测试（asr：prompt 进 form / 省略与空白不进 form / 切段每段都带；管线：透传 / 省略传 None / 类型错 400 不进管线 / 空串 no-op）全绿且既有全绿；README 同步（使用 + 错误表 + 领域提示词节）；真实 e2e（短视频 + prompt → 200）；commit + push
+  - **验收（2026-10-11）：** 79 条测试全绿（72 既有 + 7 新：asr 3 条 prompt form 形状 + 管线 4 条参数行为）；真实 e2e：BV1dPaZ6qEhd（298s 中文军事评论）+ 军事术语表 prompt → 200（15.3s，2125 字符，.txt 落盘）；prompt=123 → 400 invalid_prompt 秒回不进管线；temp 无残留
 
 ## In progress
 
