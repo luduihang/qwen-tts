@@ -7,10 +7,60 @@
 
 
 
-<!-- session-in-progress:start=2026-10-06T06:47:29.002Z -->
-## 2026-10-06 15:06 — Both scenarios passed _(in progress)_
-Both scenarios passed. However, there's a small bug in the 400 message: "Temporary audio is retained: ." — an empty path was passed to `_error_response`, and `Path("").exists()` gets normalized to `.` (the current directory), which always evaluates to true. Fix:
+
+
+
+<!-- session-in-progress:start=2026-10-10T15:56:24.065Z -->
+## 2026-10-11 00:09 — I'll document the prompt usage in the repository and sync it to GitHub _(in progress)_
+I'll document the prompt usage in the repository and sync it to GitHub. First, let me check the existing descriptions of the endpoints in DECISIONS.md and the "Environment Reference" section of PLAN.md, and maintain consistency in style:
 <!-- end-session-in-progress -->
+## 2026-10-10 21:48 — ## 文档侦察结论（Qwen3-ASR-1.7B 官方模型卡，57KB 全文已读）
+
+**先回答你最担心的：启动参数不用改，按原脚本启动即可。** prompt...
+## 文档侦察结论（Qwen3-ASR-1.7B 官方模型卡，57KB 全文已读）
+
+**先回答你最担心的：启动参数不用改，按原脚本启动即可。** prompt 不是在启动时打开的开关，而是**请求时**传的东西。你的 `qwen3-asr-1.7b.sh` 一个字都不用动。
+
+### 三个事实
+
+1. **当前没有这功能**——两层都没有：
+   - 我们的服务契约里只有 `file/model/language/temperature`；
+   - 官方 `qwen-asr` 包的 `transcribe()` API 也只有 `audio` + `language`（支持时间戳的对齐器），**通篇文档没有 prompt/热词/领域定制的任何记载**。
+
+2. **但有一条有希望的路**：模型卡明确支持 **`/v1/chat/completions` 带音频**（`messages` 里放 `audio_url` 内容块）——这是标准 vLLM 接口的一部分，**不需要任何额外启动参数**。因为 Qwen3-ASR 底座是 Qwen3-Omni 音频大模型（不是传统 Whi...
+## 2026-10-10 21:31 — 确认项目中没有任何提示词/热词相关的描述——**此功能目前并不存在**。
+
+**Spike 开始**。单一假设（可证伪）：
+
+> **假设**：vLLM 提供的...
+确认项目中没有任何提示词/热词相关的描述——**此功能目前并不存在**。
+
+**Spike 开始**。单一假设（可证伪）：
+
+> **假设**：vLLM 提供的 Qwen3-ASR-1.7B 端点能够接受用户提供的 prompt/热词（`prompt`、`hot_words` 字段或 `/v1/chat/completions` 音频对话路径），**从而影响**转写结果（例如纠正同音异形词）。
+
+首先，进行两项准备工作：① 查阅模型文档（Qwen3-ASR-1.7B 的模型卡）——如果文档能回答这个问题，就无需实测；② 准备一个 90 秒的中文测试音频片段（使用本地 34 分钟视频的一部分，该视频内容为字幕/压制相关的术语，领域同音异形词丰富，足以验证"prompt 是否改变了输出"）：
+## 2026-10-06 15:12 — ✅ **T-018 已 push**（`af39e21..d4ea476`，走 7897 代理成功）。代理已记入记忆库，以后 push 抖动直接走它。
+
+最终形...
+✅ **T-018 已 push**（`af39e21..d4ea476`，走 7897 代理成功）。代理已记入记忆库，以后 push 抖动直接走它。
+
+最终形态：
+
+```bash
+# 默认（config 的 output_dir）
+curl -X POST localhost:5000/transcribe \
+  -H 'Content-Type: application/json' \
+  -d '{"bvid":"BV1xxxxxxxxxx"}'
+
+# 指定保存目录（服务所在机器上已存在的目录）
+curl -X POST localhost:5000/transcribe \
+  -H 'Content-Type: application/json' \
+  -d '{"bvid":"BV1xxxxxxxxxx","output_dir":"/home/me/subtitles"}'
+```
+
+- 目录存在 → 200，`file_path` 指向实际落盘路径（真实验证过：`/tmp/t018_out/...txt`）
+- 目录不存在 / 是文件 / 类型错 → **4...
 ## 2026-10-06 14:47 — 可以并发，而且是**实测验证过**的，不是理论。分三层说：
 
 ## 1

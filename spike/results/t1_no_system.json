@@ -1,0 +1,22 @@
+{
+  "model": "Qwen3-ASR-1.7B",
+  "temperature": 0,
+  "max_tokens": 256,
+  "messages": [
+    {
+      "role": "system",
+      "content": "<none>"
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "audio_url",
+          "audio_url": {
+            "url": "<base64 sample15.wav, 480078 bytes elided>"
+          }
+        }
+      ]
+    }
+  ]
+}

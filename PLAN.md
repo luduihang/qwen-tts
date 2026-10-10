@@ -95,6 +95,7 @@ Phase 4（串行）: T-011 健壮性, T-012 README, T-013 端到端验收
   1. **m4a/AAC 输入挂起**（>150s 无响应；wav 正常）→ 客户端已用 ffmpeg 转码规避（asr.py）
   2. **传 `language=zh` 会重复循环**（145K 字符循环副歌；不传则模型自动检测语言，中英文均正常）→ 客户端默认不发送 language
   3. **音频文件大小上限**（参数 `audio_filesize_mb`，上限约 30MB）：29MB wav 可过、30MB（29.999MiB）→ 400（2026-10-05 探明；⚠️ 过大小检查的文件会触发真实转写占 GPU——探上限曾把队列堵约 30 分钟）。客户端已规避：T-016 按 `chunk_seconds`（默认 300s ≈ 9.6MB/段）切段
+  4. **`prompt` 表单字段有效**（2026-10-11 实测，vLLM 0.30.0）：注入领域术语表可引导同音词选择，temperature=0 下可复现；`hot_words` 被静默忽略；chat 端点 system 消息同样有效但输出带 `language Chinese<asr_text>` 前缀。详见 README「领域提示词」节，证据在 `spike/`
 - **吞吐参考**（服务端日志）：生成约 49~67 tokens/s；213s 音频 8.9s 转完（1898 字符）
 
 ## References

@@ -35,6 +35,23 @@ approach.
 
 <!-- 新决策加在上方、模板下方。示例条目在首次真实决策时替换。 -->
 
+## 2026-10-11 — 领域提示词注入：transcriptions `prompt` 字段为推荐路径（spike 实测）
+
+**Status:** Accepted
+
+**Context:** 用户需要转写命理学领域音频时注入领域术语提示词，让模型对同音词有所侧重（提高术语准确性）。需确认现有 vLLM 端点（不改启动脚本）能否接受 prompt/热词并真实影响输出。
+
+**Decision:** 经 spike 实测（15s 命理学讲座片段 × 10 次请求，temperature=0，变体内 100% 可复现，证据 `spike/`）：① 推荐路径 = `/v1/audio/transcriptions` 的 `prompt` 表单字段（vLLM 0.30.0 接受并真实改变输出，返回干净 `{"text"}`）；② `/v1/chat/completions` 的 system 消息同样有效但输出带 `language Chinese<asr_text>` 前缀，不作推荐；③ `hot_words` 字段被静默忽略，禁用。用法与三条注意事项（术语表须含实际所言之词、措辞克制、/transcribe 服务暂不透传）写入 README「领域提示词」节 + PLAN 环境参考第 4 条。
+
+**Alternatives considered:**
+- **改 vLLM 启动脚本/换模型：** 无需——`prompt` 是请求时字段，启动参数一字不动
+- **chat 端点 + system 消息：** 同样有效但响应需剥离前缀，集成成本高于 transcriptions
+- **`hot_words` 字段：** 实测被静默忽略（200 但输出不变），无效果
+
+**Tradeoffs:**
+- **Gain:** 不改代码、不改部署即可注入领域先验；实测术语表含实际所言之词时同音纠正生效（叫应 2/2 稳定）
+- **Cost/Risk:** 提示词是双向的——术语表缺词会把模型带偏（实测 叫应→叫硬）；提示词还会改变输出风格（去标点）；本仓库 /transcribe 契约未变，透传 prompt 需后续单独改契约
+
 ## 2026-10-05 — ASR 请求形状修正：m4a→wav 转码 + language 默认不发送 + temperature 透传
 
 **Status:** Accepted
