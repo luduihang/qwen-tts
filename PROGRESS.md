@@ -11,9 +11,21 @@
 
 
 <!-- session-in-progress:start=2026-10-10T15:56:24.065Z -->
-## 2026-10-11 00:09 — I'll document the prompt usage in the repository and sync it to GitHub _(in progress)_
-I'll document the prompt usage in the repository and sync it to GitHub. First, let me check the existing descriptions of the endpoints in DECISIONS.md and the "Environment Reference" section of PLAN.md, and maintain consistency in style:
+## 2026-10-11 00:11 — I've identified the root cause: the harness is continuously overwriting the in-p... _(in progress)_
+I've identified the root cause: the harness is continuously overwriting the in-progress block with my latest replies, so my 00:12 summary was lost before commit. The README/PLAN/DECISIONS/spike evidence are safely stored in the repository. I'll now add the spike conclusion as a **permanent entry** in PROGRESS.md (outside the in-progress block, which the harness manages):
 <!-- end-session-in-progress -->
+## 2026-10-11 00:15 — ✅ Spike 完成：提示词能影响 Qwen3-ASR 转写；Prompt 用法文档已同步 GitHub（`d4ea476..368dd5d`，7897 代理）
+**用户目标**：转写命理学音频时注入领域术语提示词，提高同音术语准确性。15s 命理学讲座片段（temp/BV1GucuzwEKX 截取）× 10 次请求全部 200，证据在 `spike/`（requests/ 与 results/ 分离）。
+
+**三个结论（8+2 次复跑交错顺序，变体内 100% 一致，排除 vLLM 批处理非确定性）**：
+1. ✅ `/v1/audio/transcriptions` 的 **`prompt` 表单字段有效**（vLLM 0.30.0 接受并真实改变输出，返回干净 `{"text"}`）——**推荐路径**，不改启动脚本、不改本仓库代码即可用。
+2. ✅ `/v1/chat/completions` 带 `audio_url` 内容块 + system 消息也有效，但原始输出带 `language Chinese<asr_text>` 前缀需自行剥离。
+3. ❌ `hot_words` 字段被**静默忽略**（200 但输出与基线逐字相同）——不要用。
+
+**关键证据（同一段音频，temperature=0）**：基线 `…叫应受伤…`；提示词 v1（术语表不含"叫应"）→ `…叫硬受伤…`（变差）；提示词 v2（术语表含"叫应"）→ `…叫应受伤…`（变好，2/2 稳定）。提示词是真实的同音选择先验：**术语表必须包含实际会说的词**，否则会带偏；措辞要克制（提示词还会顺带去掉标点）。
+
+**文档落库（`368dd5d` 已 push）**：README 新增「领域提示词：给转写注入领域术语（进阶）」章节（curl 用法 + 三方法实测结论表 + 三注意事项）、PLAN 环境参考第 4 条、DECISIONS 新条目（2026-10-11）、`spike/` 证据目录（probe 脚本 + 请求/响应 JSON）一并入库。本仓库 /transcribe 契约未变（不透传 prompt）；需要时加可选 `prompt` 请求参数（未实施，等用户确认）。
+
 ## 2026-10-10 21:48 — ## 文档侦察结论（Qwen3-ASR-1.7B 官方模型卡，57KB 全文已读）
 
 **先回答你最担心的：启动参数不用改，按原脚本启动即可。** prompt...
